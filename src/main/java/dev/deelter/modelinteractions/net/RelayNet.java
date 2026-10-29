@@ -51,6 +51,20 @@ public final class RelayNet implements NetBridge {
 
 	private RelayNet() {}
 
+	private static int helloTicks, hellos;
+	private static final int HELLO_INTERVAL = 40, HELLO_TRIES = 15;
+
+	/**
+	 * Every client tick until the server answered: say hello. A hello sent from the server
+	 * while we were still joining would be lost, so we ask once we can hear the answer.
+	 */
+	public static void tick() {
+		if (active || hellos >= HELLO_TRIES || !ClientPlayNetworking.canSend(Payload.TYPE)) return;
+		if (helloTicks++ % HELLO_INTERVAL != 0) return;
+		hellos++;
+		ClientPlayNetworking.send(new Payload(Wire.encodeClientHello()));
+	}
+
 	public static void register() {
 		PayloadTypeRegistry.serverboundPlay().register(Payload.TYPE, Payload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(Payload.TYPE, Payload.CODEC);
@@ -59,6 +73,8 @@ public final class RelayNet implements NetBridge {
 
 	public static void reset() {
 		active = false;
+		helloTicks = 0;
+		hellos = 0;
 		adultAllowed = false;
 	}
 

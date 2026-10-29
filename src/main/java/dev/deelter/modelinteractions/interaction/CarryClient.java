@@ -450,6 +450,10 @@ public final class CarryClient {
 	private static long carryNanos, escapedUntil;
 	private static int carryHands = 2;
 	private static Vec3 tetherGoal;
+	/** Ticks we have been walking away from whoever holds us. */
+	private static int awayTicks;
+	private static final int BREAK_FREE_TICKS = 8;
+	private static final double AWAY_SPEED = 0.04;
 	private static long tetherNanos;
 
 	/** The server says another player lifts / moves / throws / drops us. */
@@ -471,7 +475,8 @@ public final class CarryClient {
 			}
 			return;
 		}
-		if (me == null || !p.isCarryMe()) return;
+		// lifted needs "carry me"; caught while falling by someone holding our hand is "drag me" too
+		if (me == null || !p.isCarryMe() && !p.isDragMe()) return;
 		if (selfInVr.getAsBoolean() && !p.isCarryMeInVr()) return;
 		long now = System.nanoTime();
 		if (now < escapedUntil) return;
@@ -537,8 +542,19 @@ public final class CarryClient {
 		if (d <= TETHER_SLACK) return;
 		Vec3 dir = to.scale(1 / d);
 		Vec3 v = me.getDeltaMovement();
-		// walking away from the hand: that part of our own movement goes nowhere
 		double along = v.x * dir.x + v.z * dir.z;
+		// our own wish wins: keep walking away from the hand for a moment and we break free
+		if (along < -AWAY_SPEED) {
+			if (++awayTicks >= BREAK_FREE_TICKS) {
+				escapedUntil = now + 3_000_000_000L;
+				tetherGoal = null;
+				awayTicks = 0;
+				return;
+			}
+		} else {
+			awayTicks = 0;
+		}
+		// until then, walking away from the hand goes nowhere
 		if (along < 0) v = v.subtract(dir.x * along, 0, dir.z * along);
 		// close the gap within a few ticks; the slack only soaks up ping
 		Vec3 pull = dir.scale(Math.min((d - TETHER_SLACK) * 0.8, 0.7));

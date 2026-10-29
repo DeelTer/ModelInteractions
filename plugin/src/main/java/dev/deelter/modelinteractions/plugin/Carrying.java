@@ -33,6 +33,8 @@ import dev.deelter.modelinteractions.wire.Wire;
 final class Carrying implements Listener {
 	private static final double MAX_STEER = 0.8, MAX_HOLDER_DISTANCE_SQ = 36;
 	private static final long SOFT_LANDING_MS = 6000;
+	/** Hands "needed" for something that may never be lifted from the ground. */
+	private static final int NEVER = 99;
 
 	record Rules(boolean mobs, boolean dragMobs, double maxWidth, double maxHeight, double groupMaxWidth, double groupMaxHeight,
 			double holdDistance, double maxThrow, long throwCooldownMs, boolean noFallDamage, Set<String> deny) {
@@ -64,7 +66,9 @@ final class Carrying implements Listener {
 
 		Held(Entity entity, int required, boolean canDrag) {
 			this.entity = entity;
-			this.group = new CarryGroup(Math.max(1, required));
+			// only dragged: never off the ground (no number of hands is enough), but a player held by
+			// the hand who falls is caught, since in the air one hand holds
+			this.group = new CarryGroup(required > 0 ? required : NEVER);
 			this.canLift = required > 0;
 			this.canDrag = canDrag;
 		}
@@ -191,6 +195,7 @@ final class Carrying implements Listener {
 		while (it.hasNext()) {
 			Held h = it.next();
 			if (!h.entity.isValid()) {
+				if (h.group.isLifted() && h.entity instanceof Player p && !h.hadFlight) restoreFlight.put(p.getUniqueId(), now);
 				it.remove();
 				continue;
 			}
@@ -203,16 +208,13 @@ final class Carrying implements Listener {
 					h.group.leave(who);
 				}
 			}
-			h.group.setGrounded(grounded(h.entity));
-			if (h.canLift) {
-				switch (h.group.update(now)) {
-					case LIFT -> lift(h);
-					case FALL -> fall(h, now);
-					default -> {
-					}
+			// a mob that may only be dragged isn't caught either: only players who allow being held
+			h.group.setGrounded(grounded(h.entity) || !h.canLift && !(h.entity instanceof Player));
+			switch (h.group.update(now)) {
+				case LIFT -> lift(h);
+				case FALL -> fall(h, now);
+				default -> {
 				}
-			} else {
-				h.group.hands(now); // drop holders that stopped reporting
 			}
 			boolean holding = !h.group.isEmpty() && (h.group.isLifted() || h.canDrag);
 			setCollision(h, !holding);
@@ -222,8 +224,11 @@ final class Carrying implements Listener {
 		}
 		restoreFlight.entrySet().removeIf(e -> {
 			if (now < e.getValue()) return false;
+			// held up again meanwhile: lift() took the entry over, nothing to do here
+			Held again = held.get(e.getKey());
+			if (again != null && again.group.isLifted()) return true;
 			Player p = plugin.getServer().getPlayer(e.getKey());
-			if (p != null && !held.containsKey(p.getUniqueId()) && p.getGameMode() != GameMode.CREATIVE && p.getGameMode() != GameMode.SPECTATOR) {
+			if (p != null && p.getGameMode() != GameMode.CREATIVE && p.getGameMode() != GameMode.SPECTATOR) {
 				p.setFlying(false);
 				p.setAllowFlight(false);
 			}
@@ -252,7 +257,8 @@ final class Carrying implements Listener {
 		announce(h, Wire.CARRY_START);
 		h.hadGravity = h.entity.hasGravity();
 		if (h.entity instanceof Player p) {
-			h.hadFlight = p.getAllowFlight();
+			// still flying on the flight we gave last time: that wasn't theirs to begin with
+			h.hadFlight = restoreFlight.remove(p.getUniqueId()) == null && p.getAllowFlight();
 			p.setAllowFlight(true);
 			tell(p, Wire.CARRY_START, h, new Vector());
 		} else {
@@ -342,6 +348,13 @@ final class Carrying implements Listener {
 	void drop(UUID player) {
 		for (Held h : held.values()) h.group.leave(player);
 		Held self = held.get(player);
+		// flight is saved with the player: take ours back before they go, or they'd keep it
+		Player p = plugin.getServer().getPlayer(player);
+		boolean ours = restoreFlight.remove(player) != null || self != null && self.group.isLifted() && !self.hadFlight;
+		if (ours && p != null && p.getGameMode() != GameMode.CREATIVE && p.getGameMode() != GameMode.SPECTATOR) {
+			p.setFlying(false);
+			p.setAllowFlight(false);
+		}
 		if (self != null) {
 			// they are gone from under the holders; nothing to put back
 			held.remove(player);

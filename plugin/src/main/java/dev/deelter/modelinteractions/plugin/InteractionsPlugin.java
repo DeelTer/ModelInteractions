@@ -51,6 +51,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	private static final int MAX_MESSAGE = Wire.MAX_STATE_BODY + 32;
 
 	private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
+	private final Map<UUID, Long> lastHello = new ConcurrentHashMap<>();
 	private Settings settings;
 
 	double range() {
@@ -132,6 +133,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	@EventHandler
 	public void onQuit(PlayerQuitEvent e) {
 		sessions.remove(e.getPlayer().getUniqueId());
+		lastHello.remove(e.getPlayer().getUniqueId());
 		carrying.drop(e.getPlayer().getUniqueId());
 	}
 
@@ -147,6 +149,16 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	@Override
 	public void onPluginMessageReceived(@NotNull String channel, @NotNull Player player, byte @NotNull [] message) {
 		if (!Wire.CHANNEL.equals(channel) || message.length > MAX_MESSAGE) return;
+		// the client says hello once it is in the world (and again until we answer): only then can it hear us
+		if (message.length == 2 && message[0] == Wire.VERSION && message[1] == Wire.K_HELLO) {
+			Long last = lastHello.get(player.getUniqueId());
+			long now = System.currentTimeMillis();
+			if (last == null || now - last >= 1000) {
+				lastHello.put(player.getUniqueId(), now);
+				hello(player);
+			}
+			return;
+		}
 		Session s = sessions.get(player.getUniqueId());
 		if (s == null || !player.hasPermission("modelinteractions.use")) return;
 		try {

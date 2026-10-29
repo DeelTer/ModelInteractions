@@ -47,6 +47,8 @@ import net.minecraft.world.phys.Vec3;
 public final class InteractionManager {
 	private static final InteractionManager INSTANCE = new InteractionManager();
 	private static final long REMOTE_GRAB_TIMEOUT = 4_000_000_000L;
+	/** A held grab that doesn't move is re-sent this often, well within {@link #REMOTE_GRAB_TIMEOUT}. */
+	private static final long KEEPALIVE = 1_000_000_000L;
 	private static final long CAPTURE_MAX_AGE = 500_000_000L;
 	private static final int MAX_CHAIN = 3;
 	/** A hand slower than this (blocks/s) on a zone is resting there, not touching. */
@@ -76,7 +78,7 @@ public final class InteractionManager {
 	private final Cache<UUID, Map<Integer, Vector3f>> savedPoses = Caffeine.newBuilder().expireAfterAccess(Duration.ofMinutes(30)).build();
 	private final Cache<UUID, Protocol.OwnerTypes> ownerTypes = Caffeine.newBuilder().expireAfterWrite(Duration.ofHours(2)).build();
 	/** When we last asked the server for a player's states. */
-	private final Cache<UUID, Long> stateRequests = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(30)).build();
+	private final Cache<UUID, Long> stateRequests = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(10)).build();
 	private final Map<Grab.Key, Grab> grabs = new HashMap<>();
 	private final List<Supplier<List<HandSample>>> handSources = new ArrayList<>();
 	private final Map<String, Long> reactionCooldown = new HashMap<>();
@@ -92,7 +94,7 @@ public final class InteractionManager {
 	}
 
 	@Setter private TouchListener touchListener;
-	private long lastFrame;
+	private long lastFrame, lastStateSweep;
 	private long publishPoseAt = -1;
 	@Getter private boolean permissionsPublished;
 	private String publishedTypesKey;
@@ -126,6 +128,22 @@ public final class InteractionManager {
 				&& isPlayer(rig) && stateRequests.getIfPresent(rig.getUuid()) == null) {
 			stateRequests.put(rig.getUuid(), System.nanoTime());
 			net.requestStates(rig.getUuid());
+		}
+	}
+
+	/**
+	 * Players around us whose permissions we don't know yet: ask again. The first ask can come
+	 * before the server has them (they only just joined); without them their parts can't be
+	 * shown being touched, and our own touches on them stay on our screen.
+	 */
+	private void requestMissingStates() {
+		UUID self = self();
+		for (PlayerRig rig : rigs.asMap().values()) {
+			UUID u = rig.getUuid();
+			if (u.equals(self) || localOnly.containsKey(u) || permissions.getIfPresent(u) != null || !isPlayer(rig)) continue;
+			if (stateRequests.getIfPresent(u) != null) continue;
+			stateRequests.put(u, System.nanoTime());
+			net.requestStates(u);
 		}
 	}
 
@@ -300,6 +318,10 @@ public final class InteractionManager {
 		}
 
 		sendLocalMoves(now);
+		if (now - lastStateSweep > 2_000_000_000L) {
+			lastStateSweep = now;
+			requestMissingStates();
+		}
 		if (publishPoseAt > 0 && now >= publishPoseAt) {
 			publishPoseAt = -1;
 			publishOwnPose();
@@ -694,10 +716,12 @@ public final class InteractionManager {
 		if (g.isPrivateOnly()) {
 			// only on our screen: keep the shape here if asked, tell nobody
 			if (keep || isFreeMode(g.getTarget())) pinChain(g);
+			else unpinChain(g);
 			return;
 		}
 		boolean pin = keepsShape(g.getTarget(), self, keep);
 		if (pin) pinChain(g);
+		else if (unpinChain(g) && g.getTarget().equals(self)) schedulePosePublish();
 		send(g.getTarget(), Protocol.release(g.getTarget(), g.getBoneId(), hand, pin));
 		if (pin && g.getTarget().equals(self)) posedNow();
 	}
@@ -772,10 +796,23 @@ public final class InteractionManager {
 
 	private void sendLocalMoves(long now) {
 		long interval = 1_000_000_000L / MiConfig.get().getInput().getSyncHz();
+		UUID self = self();
 		for (Grab g : grabs.values()) {
+			// started before their permissions arrived: now that they allow it, everyone gets to see it
+			if (g.isLocal() && g.isPrivateOnly() && self != null) {
+				PlayerRig r = rigs.getIfPresent(g.getTarget());
+				if (r != null && shared(r, self, g.getBoneId())) {
+					g.setPrivateOnly(false);
+					send(g.getTarget(), Protocol.grab(g.getTarget(), g.getBoneId(), g.getKey().hand(), g.getAnchorLocal(), g.getGoalModel()));
+					g.setLastSentNanos(now);
+					g.getLastSent().set(g.getGoalModel());
+				}
+			}
 			if (g.isLocal() && !g.isPrivateOnly()) lookIfHead(g);
 			if (!g.isLocal() || g.isPrivateOnly() || now - g.getLastSentNanos() < interval) continue;
-			if (g.getLastSent().distanceSquared(g.getGoalModel()) < 0.0001f) continue; // < 1cm
+			// < 1cm: nothing to send, but say "still holding" now and then, or others let go after a while
+			boolean still = g.getLastSent().distanceSquared(g.getGoalModel()) < 0.0001f;
+			if (still && now - g.getLastSentNanos() < KEEPALIVE) continue;
 			g.setLastSentNanos(now);
 			g.getLastSent().set(g.getGoalModel());
 			send(g.getTarget(), Protocol.move(g.getTarget(), g.getBoneId(), g.getKey().hand(), g.getGoalModel()));
@@ -807,6 +844,37 @@ public final class InteractionManager {
 			SpringJoint j = rig.joint(b.getId());
 			if (j != null) j.pinCurrent();
 		}
+	}
+
+	/**
+	 * Let go without "keep": a shape saved on this part before is dropped too, and it glides
+	 * back to how the player really stands. Returns whether anything was pinned.
+	 */
+	private boolean unpinChain(Grab g) {
+		PlayerRig rig = rigs.getIfPresent(g.getTarget());
+		if (rig == null) return false;
+		boolean any = false;
+		if (g.getBoneId() == Wire.BODY_BONE) {
+			SpringJoint b = rig.getBodyJoint();
+			if (b != null && b.getPinned().lengthSquared() > 1e-6f) {
+				b.getPinned().zero();
+				b.glide();
+				any = true;
+			}
+			return any;
+		}
+		Bone bone = rig.bone(g.getBoneId());
+		int depth = 0;
+		for (Bone b = bone; b != null && depth <= MAX_CHAIN; b = b.getParent(), depth++) {
+			if (depth > 0 && (b.isRoot() || b.getType() != bone.getType())) break;
+			SpringJoint j = rig.joints().get(b.getId());
+			if (j != null && j.getPinned().lengthSquared() > 1e-6f) {
+				j.getPinned().zero();
+				j.glide();
+				any = true;
+			}
+		}
+		return any;
 	}
 
 	private void schedulePosePublish() {
@@ -854,8 +922,9 @@ public final class InteractionManager {
 		Grab.Key key = new Grab.Key(sender, act.hand());
 		switch (act.op()) {
 			case Wire.OP_GRAB -> {
+				// kept even if not allowed (yet): permissions may still be on their way, and
+				// applyGrab checks them every frame
 				PlayerRig rig = rigs.getIfPresent(target);
-				if (rig != null && !allowed(target, sender, kindOf(rig, act.bone()))) return;
 				Vector3f p = Protocol.vec(act.point(), new Vector3f());
 				grabs.put(key, new Grab(key, target, act.bone(), Protocol.vec(act.anchor(), new Vector3f()), p, false));
 				if (toMe) playOwn(MiConfig.get().getReactions().getGrabbedAnimation());
@@ -872,6 +941,8 @@ public final class InteractionManager {
 				if (keepsShape(target, sender, act.keep())) {
 					pinChain(g);
 					if (toMe) posedNow();
+				} else if (unpinChain(g) && toMe) {
+					schedulePosePublish();
 				}
 			}
 			case Wire.OP_PET -> {

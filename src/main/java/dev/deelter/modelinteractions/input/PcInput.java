@@ -40,11 +40,21 @@ public final class PcInput {
 
 	private static KeyMapping grab, pet, hug, reset, pinSelf, freeMode, keep;
 	private static boolean grabWasDown, shiftWasDown;
+	private static long shiftDownAt;
+	private static boolean shiftTapValid;
 	/** The current grab / pet was started with the use key and lasts while it is held. */
 	private static boolean useGrabbing, usePetting;
 	private static float holdDistance;
 	/** Where the wheel wants the held point; {@link #holdDistance} follows it as fast as the weight lets it. */
 	private static float holdTarget;
+	/**
+	 * While holding with the mouse the camera turns slower than the mouse, so your view doesn't
+	 * swing far off; the grabbed point follows the mouse at full speed, up to an angle away
+	 * from the middle of the screen. Offsets from the camera, degrees.
+	 */
+	private static float aimYaw, aimPitch;
+	private static boolean aiming;
+	private static final float AIM_MAX_YAW = 45f, AIM_MAX_PITCH = 35f;
 
 	private PcInput() {}
 
@@ -159,9 +169,16 @@ public final class PcInput {
 			useGrabbing = false;
 			mgr.releaseLocal(HAND, false);
 		}
-		// Shift while holding: "keep this shape when I let go", press again to undo
+		// a quick tap of Shift while holding: "keep this shape when I let go", tap again to undo.
+		// Holding Shift is just sneaking and changes nothing
 		boolean shift = mc.options.keyShift.isDown() && mc.gui.screen() == null;
-		if (shift && !shiftWasDown && mgr.localGrab(HAND) != null) toggleKeep(mc);
+		long nowMs = System.currentTimeMillis();
+		if (shift && !shiftWasDown) {
+			shiftDownAt = nowMs;
+			shiftTapValid = mgr.localGrab(HAND) != null;
+		}
+		if (!shift && shiftWasDown && shiftTapValid && nowMs - shiftDownAt <= 300 && mgr.localGrab(HAND) != null) toggleKeep(mc);
+		if (mgr.localGrab(HAND) == null) shiftTapValid = false;
 		shiftWasDown = shift;
 		if (usePetting) {
 			PartHit hit = useDown && mc.player.isShiftKeyDown() ? pick(mc, 1f) : null;
@@ -280,12 +297,36 @@ public final class PcInput {
 
 	private static long lastFrameNanos;
 
+	/** Camera share of a mouse turn while holding: light parts 80%, heavy bodies 45%. */
+	private static double cameraShare() {
+		Grab g = InteractionManager.get().localGrab(HAND);
+		return g == null ? 1 : 0.45 + 0.35 * InteractionManager.get().complianceOf(g);
+	}
+
+	/**
+	 * Called with each mouse turn of the local player (degrees / 0.15, as vanilla passes them).
+	 * Returns what the camera itself turns; the rest goes into the aim of the held point.
+	 */
+	public static double onTurn(double delta, boolean yaw) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player == null || InteractionManager.get().localGrab(HAND) == null || vrHolding()) return delta;
+		aiming = true;
+		double share = cameraShare();
+		// the camera takes its share; the rest moves the held point away from the middle of the screen
+		float rest = (float) (delta * 0.15 * (1 - share));
+		if (yaw) aimYaw = net.minecraft.util.Mth.clamp(aimYaw + rest, -AIM_MAX_YAW, AIM_MAX_YAW);
+		else aimPitch = net.minecraft.util.Mth.clamp(aimPitch + rest, -AIM_MAX_PITCH, AIM_MAX_PITCH);
+		return delta * share;
+	}
+
 	/** Per-frame: drag the held point with the camera. */
 	public static void frame(Minecraft mc, float partial) {
 		InteractionManager mgr = InteractionManager.get();
 		Grab g = mgr.localGrab(HAND);
 		if (g == null) {
 			lastFrameNanos = 0;
+			aiming = false;
+			aimYaw = aimPitch = 0;
 			dev.deelter.modelinteractions.interaction.CarryClient.clearPcHand();
 			return;
 		}
@@ -297,7 +338,9 @@ public final class PcInput {
 		float step = speed * dt;
 		holdDistance += Math.clamp(holdTarget - holdDistance, -step, step);
 		Vec3 eye = mc.player.getEyePosition(partial);
-		Vec3 look = mc.player.getViewVector(partial);
+		Vec3 look = aiming
+				? Vec3.directionFromRotation(net.minecraft.util.Mth.clamp(mc.player.getViewXRot(partial) + aimPitch, -90f, 90f), mc.player.getViewYRot(partial) + aimYaw)
+				: mc.player.getViewVector(partial);
 		Vector3f point = new Vector3f(
 				(float) (eye.x + look.x * holdDistance),
 				(float) (eye.y + look.y * holdDistance),

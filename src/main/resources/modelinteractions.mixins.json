@@ -7,6 +7,7 @@
     "EntityAccessor",
     "EntityPushMixin",
     "EntityRendererMixin",
+    "EntityTurnMixin",
     "EntityRenderStateMixin",
     "GameRendererMixin",
     "LivingEntityRendererMixin",

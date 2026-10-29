@@ -25,7 +25,8 @@ import java.util.UUID;
  * STATE c2s: state u8, len u16, body
  *       s2c: state u8, owner uuid, len u16, body
  * REQ   c2s: target uuid                       ask for the states of one player
- * HELLO s2c: range u16, flags u8               relay present; sent once after join
+ * HELLO c2s: (nothing)                        "I have the mod"; repeated until the server answers
+ *       s2c: range u16, flags u8               relay present
  * CARRY c2s: sub u8, target uuid, pos 3*f64, vel 3*f32, hands u8   holding / letting go of something;
  *            pos is where the held thing's feet go so that every grabbed point stays in its hand
  *       s2c: carrier uuid, then the same     only to the carried player
@@ -358,6 +359,11 @@ public final class Wire {
 			out.writeByte(K_REQ);
 			writeUuid(out, target);
 		});
+	}
+
+	/** The client's hello: just the header. */
+	public static byte[] encodeClientHello() {
+		return new byte[] { (byte) VERSION, (byte) K_HELLO };
 	}
 
 	public static byte[] encodeHello(int range, int flags) {

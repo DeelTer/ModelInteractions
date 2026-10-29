@@ -36,7 +36,8 @@ import net.minecraft.world.phys.Vec3;
  * with them is sent over the network.
  */
 public final class DummyManager {
-	public enum Motion { STILL, WALK, SPIN, JUMP }
+	/** FLOAT: hovers a little above the ground, so one hand can catch it and it hangs. */
+	public enum Motion { STILL, WALK, SPIN, JUMP, FLOAT }
 
 	/** CPM models shipped inside the mod jar; "steve" is the plain player model. */
 	public static final List<String> BUILTIN = List.of("rana", "lucifer", "steve");
@@ -251,12 +252,12 @@ public final class DummyManager {
 			e.setDeltaMovement(Vec3.ZERO);
 			if (d.carriedAt != null || d.flying != null) {
 				carried(mc, d);
-				// held, it is in the air; thrown, until it lands
-				d.airborne = d.carriedAt != null ? e.position().y > d.center.y + 0.05 : d.flying != null;
+				// held or flying, it is in the air until something solid is under its feet
+				d.airborne = d.flying != null || !standsOnSomething(mc, e);
 				e.setOnGround(!d.airborne);
 				continue;
 			}
-			d.airborne = d.motion == Motion.JUMP && Math.sin(d.phase) > 0.02;
+			d.airborne = d.motion == Motion.JUMP && Math.sin(d.phase) > 0.02 || d.motion == Motion.FLOAT;
 			e.setOnGround(!d.airborne);
 			switch (d.motion) {
 				case STILL -> {
@@ -280,6 +281,11 @@ public final class DummyManager {
 					d.phase += 0.25f;
 					double h = Math.max(0, Math.sin(d.phase)) * 0.6;
 					e.setPos(d.center.x, d.center.y + h, d.center.z);
+					face(d, d.baseYaw);
+				}
+				case FLOAT -> {
+					d.phase += 0.05f;
+					e.setPos(d.center.x, d.center.y + 1.2 + Math.sin(d.phase) * 0.05, d.center.z);
 					face(d, d.baseYaw);
 				}
 			}
@@ -314,13 +320,26 @@ public final class DummyManager {
 			e.setPos(e.position().lerp(d.carriedAt, 0.5));
 			return;
 		}
-		Vec3 p = e.position().add(d.flying);
+		// thrown or let go: fall until the real blocks under it stop it
+		Vec3 step = d.flying;
 		d.flying = d.flying.multiply(0.98, 0.98, 0.98).subtract(0, 0.08, 0);
-		if (p.y <= d.center.y && d.flying.y < 0) {
-			p = new Vec3(p.x, d.center.y, p.z);
-			d.flying = null;
-			d.center = p;
+		if (mc.level.noCollision(e, e.getBoundingBox().move(step))) {
+			e.setPos(e.position().add(step));
+			return;
 		}
-		e.setPos(p);
+		// blocked: keep the sideways part if that is free, and land when going down
+		Vec3 flat = new Vec3(step.x, 0, step.z);
+		if (mc.level.noCollision(e, e.getBoundingBox().move(flat))) e.setPos(e.position().add(flat));
+		if (step.y <= 0) {
+			d.flying = null;
+			d.center = e.position();
+			d.motion = Motion.STILL;
+		} else {
+			d.flying = new Vec3(d.flying.x, 0, d.flying.z);
+		}
+	}
+
+	private static boolean standsOnSomething(Minecraft mc, LivingEntity e) {
+		return !mc.level.noCollision(e, e.getBoundingBox().move(0, -0.06, 0));
 	}
 }

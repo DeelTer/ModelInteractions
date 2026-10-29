@@ -40,7 +40,10 @@ public class ModelInteractionsClient implements ClientModInitializer {
 		CarryClient.register();
 		ConfigListeners.add(mgr::onConfigChanged);
 		DebugCommands.register();
-		ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> publishRetry = 0);
+		ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> {
+			publishRetry = 0;
+			RelayNet.reset();
+		});
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> {
 			DummyManager.reset();
 			RelayNet.reset();
@@ -52,6 +55,7 @@ public class ModelInteractionsClient implements ClientModInitializer {
 			if (mc.player == null) return;
 			DummyManager.tick(mc);
 			CarryClient.tick(mc);
+			RelayNet.tick();
 			dev.deelter.modelinteractions.toy.ToyBridge.tick();
 			PcInput.tick(mc);
 			mgr.tick();
