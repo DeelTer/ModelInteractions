@@ -1,0 +1,25 @@
+name: ModelInteractions
+version: '${version}'
+main: dev.deelter.modelinteractions.plugin.InteractionsPlugin
+api-version: '1.21.4'
+author: DeelTer
+description: Lets players with the Model Interactions mod see each other grab, push, pet and pose models
+commands:
+  modelinteractions:
+    description: Model Interactions relay
+    usage: /modelinteractions <reload|stats>
+    permission: modelinteractions.admin
+    aliases: [mint]
+permissions:
+  modelinteractions.use:
+    description: Interact with other players' models, seen by others
+    default: true
+  modelinteractions.mobs:
+    description: Interact with mob models, seen by others
+    default: true
+  modelinteractions.carry:
+    description: Lift and throw mobs (VR)
+    default: true
+  modelinteractions.admin:
+    description: Use /modelinteractions
+    default: op

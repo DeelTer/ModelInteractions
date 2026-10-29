@@ -1,0 +1,53 @@
+plugins {
+    id 'java'
+}
+
+// Paper plugin: relays interactions between nearby players that have the mod
+version = rootProject.mod_version
+group = rootProject.maven_group
+
+base {
+    archivesName = 'modelinteractions-paper'
+}
+
+repositories {
+    mavenCentral()
+    maven { name = 'PaperMC'; url = 'https://repo.papermc.io/repository/maven-public/' }
+}
+
+dependencies {
+    compileOnly "io.papermc.paper:paper-api:${rootProject.paper_api_version}"
+    testImplementation "io.papermc.paper:paper-api:${rootProject.paper_api_version}"
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+sourceSets {
+    main {
+        // the wire format, the same source the mod is built with
+        java.srcDir rootProject.file('src/shared/java')
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+    options.compilerArgs += ['-Xlint:deprecation']
+}
+
+test { useJUnitPlatform() }
+
+processResources {
+    // read at configuration time; touching project while the task runs is deprecated
+    def props = [version: project.version.toString()]
+    inputs.properties props
+    filesMatching('plugin.yml') { expand props }
+}
+
+jar {
+    destinationDirectory = rootProject.layout.buildDirectory.dir('libs')
+}

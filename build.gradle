@@ -1,0 +1,79 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
+}
+
+configure(subprojects.findAll { it.name.startsWith('mc') }) {
+    apply plugin: 'net.fabricmc.fabric-loom'
+    apply plugin: 'java'
+
+    def mc = project.minecraft_version
+
+    version = "${rootProject.mod_version}+mc${mc}"
+    group = rootProject.maven_group
+    base { archivesName = rootProject.archives_base_name }
+
+    repositories {
+        maven { url = 'https://maven.terraformersmc.com/releases/' }
+        maven { url = 'https://maven.shedaniel.me/' }
+        exclusiveContent {
+            forRepository { maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' } }
+            filter { includeGroup 'maven.modrinth' }
+        }
+    }
+
+    dependencies {
+        minecraft "com.mojang:minecraft:${mc}"
+        implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+        implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+        // Hard dependency: we hook into CPM internals
+        implementation "maven.modrinth:custom-player-models:${project.cpm_version}"
+
+        // Soft dependencies
+        compileOnly "maven.modrinth:vivecraft:${project.vivecraft_version}"
+        compileOnly("maven.modrinth:modmenu:${project.modmenu_version}") { transitive = false }
+        compileOnly("maven.modrinth:cloth-config:${project.cloth_version}") { transitive = false }
+
+        implementation "com.github.ben-manes.caffeine:caffeine:${rootProject.caffeine_version}"
+        include "com.github.ben-manes.caffeine:caffeine:${rootProject.caffeine_version}"
+
+        compileOnly "org.projectlombok:lombok:${rootProject.lombok_version}"
+        annotationProcessor "org.projectlombok:lombok:${rootProject.lombok_version}"
+        testCompileOnly "org.projectlombok:lombok:${rootProject.lombok_version}"
+        testAnnotationProcessor "org.projectlombok:lombok:${rootProject.lombok_version}"
+
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+        testImplementation 'org.junit.jupiter:junit-jupiter-params:5.11.4'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    sourceSets {
+        main {
+            // shared/ holds the wire format, compiled into the plugin as well
+            java.srcDirs = [rootProject.file('src/main/java'), rootProject.file('src/shared/java')]
+            resources.srcDirs = [rootProject.file('src/main/resources')]
+        }
+        test {
+            java.srcDirs = [rootProject.file('src/test/java')]
+            resources.srcDirs = [rootProject.file('src/test/resources')]
+        }
+    }
+
+    processResources {
+        def props = [version: project.version, minecraft_range: project.minecraft_range]
+        inputs.properties props
+        filesMatching('fabric.mod.json') { expand props }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        it.options.release = 25
+        it.options.encoding = 'UTF-8'
+        // keep deprecated API out: warnings are listed, not just counted
+        it.options.compilerArgs += ['-Xlint:deprecation']
+    }
+    java {
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
+    }
+    test { useJUnitPlatform(); testLogging { showStandardStreams = true; exceptionFormat = 'full' } }
+}

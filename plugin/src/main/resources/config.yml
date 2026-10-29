@@ -1,0 +1,61 @@
+# Model Interactions relay. The server only checks and forwards messages; physics runs on the clients.
+
+# Adults-only servers: lets players connect an external device (Lovense) that reacts to touches on their
+# own model. It runs entirely on each player's computer, only for players who turn it on themselves and only
+# for people they listed. Leave this off unless every player is verified to be an adult
+adult-features: false
+
+# blocks around the touched entity in which others see grabs, pushes, pets and hugs
+range: 16
+# blocks from a player's eyes to the box of what they touch, at most. Arms reach ~1, the mouse reach is
+# 3 by default; a bit more covers lag
+reach: 6
+# blocks around a player in which their permissions, saved pose and part types are shared
+state-range: 48
+# players may grab and push mobs too (needs the permission modelinteractions.mobs as well)
+mobs: true
+# how many players at most get one message, the nearest ones. Keeps a crowd from flooding everyone
+max-watchers: 32
+
+rate:
+  # a held grab sends up to 30 moves a second per hand, VR has two hands and the mouse one
+  actions-per-second: 100
+  actions-burst: 150
+  # permissions, saved pose, part types
+  states-per-second: 2
+  states-burst: 6
+  # asking for the states of a player that came into view
+  requests-per-second: 8
+  requests-burst: 24
+
+cooldown:
+  # per sender and target
+  pet-ms: 250
+  hug-ms: 1000
+
+# Lifting and throwing: VR hands and mouse grabs of everyone holding the same thing add up
+carry:
+  # mobs can be lifted (needs the permission modelinteractions.carry as well). Players only ever when they
+  # allowed it in their own mod
+  mobs: true
+  # a hand on a mob standing on the ground pulls it along when the holder walks off. Players only ever
+  # when they allowed being dragged in their own mod
+  drag-mobs: true
+  # the biggest mob that can be lifted, in blocks. A sheep is 0.9 x 1.3, a cow 0.9 x 1.4
+  max-width: 1.0
+  max-height: 1.6
+  # what one player lifts with two hands; anything bigger needs more hands (one more per half that size
+  # again), so friends lift it together. Nothing bigger than this, however many hold it
+  group-max-width: 1.6
+  group-max-height: 2.0
+  # blocks from the carrier's eyes the held thing may be
+  hold-distance: 2.5
+  # blocks per tick at most; heavier things get less. 1.6 throws a chicken ~12 blocks
+  max-throw-speed: 1.6
+  throw-cooldown-ms: 1000
+  # what was carried or thrown takes no fall damage for 6 seconds
+  no-fall-damage: true
+  # entity types that can't be lifted
+  deny:
+    - villager
+    - wandering_trader

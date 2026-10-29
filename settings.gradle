@@ -1,0 +1,17 @@
+pluginManagement {
+    repositories {
+        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'ModelInteractions'
+
+// One subproject per supported Minecraft version; all share ../../src
+['26.2', '26.3'].each { mc ->
+    include ":mc$mc"
+    project(":mc$mc").projectDir = file("versions/$mc")
+}
+
+// Paper plugin that relays interactions between players with the mod
+include 'plugin'

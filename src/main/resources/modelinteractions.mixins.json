@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.deelter.modelinteractions.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "EntityAccessor",
+    "EntityPushMixin",
+    "EntityRendererMixin",
+    "EntityRenderStateMixin",
+    "GameRendererMixin",
+    "LivingEntityRendererMixin",
+    "MannequinAccessor",
+    "MinecraftMixin",
+    "MouseHandlerMixin",
+    "MultiPlayerGameModeMixin",
+    "ModelFeatureRendererMixin",
+    "ModelPartAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
