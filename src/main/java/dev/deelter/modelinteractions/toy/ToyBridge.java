@@ -1,5 +1,10 @@
 package dev.deelter.modelinteractions.toy;
 
+import dev.deelter.modelinteractions.ModelInteractions;
+import dev.deelter.modelinteractions.config.MiConfig;
+import dev.deelter.modelinteractions.net.RelayNet;
+import net.minecraft.client.Minecraft;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -8,11 +13,6 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import dev.deelter.modelinteractions.ModelInteractions;
-import dev.deelter.modelinteractions.config.MiConfig;
-import dev.deelter.modelinteractions.net.RelayNet;
-import net.minecraft.client.Minecraft;
 
 /**
  * Drives the player's own external device through the Lovense Remote app running on the same
@@ -23,7 +23,9 @@ import net.minecraft.client.Minecraft;
  * and it stops by itself a moment after the last touch.
  */
 public final class ToyBridge {
-	/** Lovense levels are 0..20. */
+	/**
+	 * Lovense levels are 0..20.
+	 */
 	public static final int MAX_LEVEL = 20;
 	private static final long DECAY_START = 600_000_000L, SEND_INTERVAL = 200_000_000L;
 
@@ -34,15 +36,20 @@ public final class ToyBridge {
 	});
 	private static HttpClient http;
 
-	/** 0..1, raised by touches, falls off on its own. */
+	/**
+	 * 0..1, raised by touches, falls off on its own.
+	 */
 	private static float intensity;
 	private static long lastTouch, lastSent;
 	private static int sentLevel;
 	private static boolean warned;
 
-	private ToyBridge() {}
+	private ToyBridge() {
+	}
 
-	/** Allowed here and now: the player wants it and this server (or singleplayer) offers it. */
+	/**
+	 * Allowed here and now: the player wants it and this server (or singleplayer) offers it.
+	 */
 	public static boolean active() {
 		MiConfig.Toy t = MiConfig.get().getToy();
 		if (!t.isEnabled()) return false;
@@ -50,14 +57,18 @@ public final class ToyBridge {
 		return mc.hasSingleplayerServer() || RelayNet.isActive() && RelayNet.isAdultAllowed();
 	}
 
-	/** A touch on one of our zones; {@code strength} 0..1. */
+	/**
+	 * A touch on one of our zones; {@code strength} 0..1.
+	 */
 	public static void touch(float strength) {
 		if (!active() || strength <= 0) return;
 		intensity = Math.min(1f, Math.max(intensity, strength));
 		lastTouch = System.nanoTime();
 	}
 
-	/** Every client tick: fade out, and tell the app when the level changed. */
+	/**
+	 * Every client tick: fade out, and tell the app when the level changed.
+	 */
 	public static void tick() {
 		long now = System.nanoTime();
 		if (intensity > 0 && now - lastTouch > DECAY_START) intensity = Math.max(0, intensity - 0.08f);
@@ -70,7 +81,9 @@ public final class ToyBridge {
 		send(level == 0 ? "Stop" : "Vibrate:" + level, level == 0 ? 0 : 1);
 	}
 
-	/** Panic: zero now and tell the app at once. */
+	/**
+	 * Panic: zero now and tell the app at once.
+	 */
 	public static void stop() {
 		intensity = 0;
 		sentLevel = 0;

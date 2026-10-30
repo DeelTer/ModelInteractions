@@ -1,22 +1,26 @@
 package dev.deelter.modelinteractions.plugin;
 
+import dev.deelter.modelinteractions.wire.Wire;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import dev.deelter.modelinteractions.wire.Wire;
-
-/** What the server knows about one player with the mod. Main thread only. */
+/**
+ * What the server knows about one player with the mod. Main thread only.
+ */
 final class Session {
-	private record Held(UUID target, int bone) {}
-
 	final TokenBucket actions, states, requests;
-	/** Latest canonical state bodies this player published. */
+	/**
+	 * Latest canonical state bodies this player published.
+	 */
 	final byte[][] stored = new byte[Wire.S_COUNT][];
-	/** This player's own permissions with their name lists; the lists are never sent to anyone. */
-	Wire.Perm perm;
 	private final Held[] grabs = new Held[Wire.MAX_HAND + 1];
 	private final Map<String, Long> cooldowns = new HashMap<>();
+	/**
+	 * This player's own permissions with their name lists; the lists are never sent to anyone.
+	 */
+	Wire.Perm perm;
 	int strikes;
 
 	Session(InteractionsPlugin.Settings s) {
@@ -48,7 +52,9 @@ final class Session {
 		for (int i = 0; i < grabs.length; i++) grabs[i] = null;
 	}
 
-	/** Whether {@code actorName} may interact with this player at all (mode and name lists). */
+	/**
+	 * Whether {@code actorName} may interact with this player at all (mode and name lists).
+	 */
 	boolean allowsActor(String actorName) {
 		if (perm == null) return true;
 		String n = actorName.toLowerCase(java.util.Locale.ROOT);
@@ -68,5 +74,8 @@ final class Session {
 		if (cooldowns.size() > 64) cooldowns.values().removeIf(t -> now - t > 60_000);
 		cooldowns.put(key, now);
 		return true;
+	}
+
+	private record Held(UUID target, int bone) {
 	}
 }

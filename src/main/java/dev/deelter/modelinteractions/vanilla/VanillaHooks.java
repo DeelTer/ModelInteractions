@@ -1,15 +1,5 @@
 package dev.deelter.modelinteractions.vanilla;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.WeakHashMap;
-
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.config.MiConfig;
 import dev.deelter.modelinteractions.interaction.InteractionManager;
@@ -21,6 +11,11 @@ import dev.deelter.modelinteractions.physics.PartType;
 import dev.deelter.modelinteractions.physics.SpringJoint;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.model.geom.ModelPart;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+
+import java.util.*;
 
 /**
  * Backend for ordinary entity models: every mob, and players without a CPM model. Bones are
@@ -28,22 +23,27 @@ import net.minecraft.client.model.geom.ModelPart;
  * Render thread only.
  */
 public final class VanillaHooks {
-	/** A model further than this from its entity is drawn somewhere else (inventory, GUI). */
+	/**
+	 * A model further than this from its entity is drawn somewhere else (inventory, GUI).
+	 */
 	private static final float MAX_WORLD_OFFSET = 12f;
-	/** Entities further than this from the camera get no rig at all. */
+	/**
+	 * Entities further than this from the camera get no rig at all.
+	 */
 	private static final double MAX_DISTANCE_SQ = 48 * 48;
-
-	private record Layout(ModelPart[] parts, String[] names, int[] parents) {}
-
 	private static final Map<Model<?>, Layout> LAYOUTS = new WeakHashMap<>();
-	/** layer model -> body model -> body part index for each layer part (-1: none). */
+	/**
+	 * layer model -> body model -> body part index for each layer part (-1: none).
+	 */
 	private static final Map<Model<?>, Map<Model<?>, int[]>> LAYER_MAPS = new WeakHashMap<>();
-	/** Parts changed for the draw in progress and their posed values, put back after it. */
+	/**
+	 * Parts changed for the draw in progress and their posed values, put back after it.
+	 */
 	private static final List<Object[]> CHANGED = new ArrayList<>();
 	private static final Quaternionf Q = new Quaternionf(), Q2 = new Quaternionf();
 	private static final Vector3f V = new Vector3f();
-
-	private VanillaHooks() {}
+	private VanillaHooks() {
+	}
 
 	public static void onPosed(Model<?> model, MiRenderState s, Matrix4f pose) {
 		MiConfig cfg = MiConfig.get();
@@ -84,7 +84,9 @@ public final class VanillaHooks {
 		if (rig.hasDeformation() && (world || cfg.isDeformInGui())) apply(rig, layout);
 	}
 
-	/** The body model was just posed for the layers drawn straight away (held items, heads, capes). */
+	/**
+	 * The body model was just posed for the layers drawn straight away (held items, heads, capes).
+	 */
 	public static void onLayersPosed(Model<?> body, MiRenderState s, Matrix4f pose) {
 		MiConfig cfg = MiConfig.get();
 		if (!cfg.isEnabled() || body == null) return;
@@ -220,7 +222,9 @@ public final class VanillaHooks {
 		return BodyRegion.BODY;
 	}
 
-	/** Type from the part name; vanilla names are consistent enough ("left_ear", "tail1", "right_wing_tip"). */
+	/**
+	 * Type from the part name; vanilla names are consistent enough ("left_ear", "tail1", "right_wing_tip").
+	 */
 	static PartType classify(Bone b) {
 		if (b.isRoot()) return PartType.STATIC;
 		String n = b.getName() == null ? "" : b.getName().toLowerCase(Locale.ROOT);
@@ -229,7 +233,8 @@ public final class VanillaHooks {
 		// whole words of the name ("left_hind_leg2" -> left, hind, leg), so "beard" is no ear and "armor" no arm
 		java.util.Set<String> w = new java.util.HashSet<>(java.util.Arrays.asList(n.replaceAll("[0-9]", "").split("_")));
 		// skin overlay layers ride along with their part
-		if (w.contains("hat") || w.contains("jacket") || w.contains("sleeve") || w.contains("pants") || w.contains("cloak")) return PartType.STATIC;
+		if (w.contains("hat") || w.contains("jacket") || w.contains("sleeve") || w.contains("pants") || w.contains("cloak"))
+			return PartType.STATIC;
 		if (w.contains("ear") || w.contains("ears")) return PartType.EAR;
 		if (w.contains("tail") || w.contains("tentacle") || w.contains("tentacles")) return PartType.TAIL;
 		if (w.contains("wing") || w.contains("wings")) return PartType.WING;
@@ -237,13 +242,16 @@ public final class VanillaHooks {
 		if (w.contains("leg") || w.contains("legs") || w.contains("arm") || w.contains("arms") || w.contains("foot") || w.contains("paw")
 				|| w.contains("fin") || w.contains("flipper") || w.contains("hand")) return PartType.LIMB;
 		if (n.equals("head")) return PartType.HEAD;
-		if (w.contains("body") || w.contains("torso") || n.equals("cube") || w.contains("chest") || n.equals("bone")) return PartType.STATIC;
+		if (w.contains("body") || w.contains("torso") || n.equals("cube") || w.contains("chest") || n.equals("bone"))
+			return PartType.STATIC;
 		// segments keep the type of their chain (tail1 -> tail2 named "segment")
 		if (pt == PartType.TAIL || pt == PartType.HAIR || pt == PartType.EAR || pt == PartType.WING) return pt;
 		return b.getMass() <= 0 ? PartType.STATIC : PartType.ACCESSORY;
 	}
 
-	/** Humanoids turn about the bottom of the body; anything else about its middle. */
+	/**
+	 * Humanoids turn about the bottom of the body; anything else about its middle.
+	 */
 	private static void pivot(PlayerRig rig, List<Bone> bones) {
 		Vector3f p = rig.getBodyPivot();
 		for (Bone b : bones) {
@@ -289,7 +297,9 @@ public final class VanillaHooks {
 		apply(rig, l, null);
 	}
 
-	/** {@code map}: for a layer, body part index of each of its parts; null for the body model itself. */
+	/**
+	 * {@code map}: for a layer, body part index of each of its parts; null for the body model itself.
+	 */
 	private static void apply(PlayerRig rig, Layout l, int[] map) {
 		for (int i = 0; i < l.parts().length; i++) {
 			int id = map == null ? i : map[i];
@@ -324,10 +334,12 @@ public final class VanillaHooks {
 
 	private static void remember(ModelPart p) {
 		for (Object[] o : CHANGED) if (o[0] == p) return;
-		CHANGED.add(new Object[] { p, new float[] { p.x, p.y, p.z, p.xRot, p.yRot, p.zRot } });
+		CHANGED.add(new Object[]{p, new float[]{p.x, p.y, p.z, p.xRot, p.yRot, p.zRot}});
 	}
 
-	/** Shared models must not keep one entity's deformation for the next one drawn. */
+	/**
+	 * Shared models must not keep one entity's deformation for the next one drawn.
+	 */
 	public static void restore() {
 		if (CHANGED.isEmpty()) return;
 		for (Object[] o : CHANGED) {
@@ -341,5 +353,8 @@ public final class VanillaHooks {
 			p.zRot = v[5];
 		}
 		CHANGED.clear();
+	}
+
+	private record Layout(ModelPart[] parts, String[] names, int[] parents) {
 	}
 }

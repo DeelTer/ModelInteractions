@@ -1,16 +1,13 @@
 package dev.deelter.modelinteractions.plugin;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import dev.deelter.modelinteractions.wire.Wire;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
-import org.junit.jupiter.api.Test;
-
-import dev.deelter.modelinteractions.wire.Wire;
+import static org.junit.jupiter.api.Assertions.*;
 
 class RelayRulesTest {
 	private static final InteractionsPlugin.Settings S = new InteractionsPlugin.Settings(16, 6, 48, true, 32,

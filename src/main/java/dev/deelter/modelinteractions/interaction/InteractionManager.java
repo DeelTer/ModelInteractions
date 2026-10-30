@@ -1,21 +1,7 @@
 package dev.deelter.modelinteractions.interaction;
 
-import java.io.IOException;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.Supplier;
-
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.config.MiConfig;
 import dev.deelter.modelinteractions.model.Bone;
@@ -39,6 +25,13 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.util.*;
+import java.util.function.Supplier;
 
 /**
  * Client-side hub: owns rigs, active grabs and permission states, runs physics once per
@@ -47,59 +40,169 @@ import net.minecraft.world.phys.Vec3;
 public final class InteractionManager {
 	private static final InteractionManager INSTANCE = new InteractionManager();
 	private static final long REMOTE_GRAB_TIMEOUT = 4_000_000_000L;
-	/** A held grab that doesn't move is re-sent this often, well within {@link #REMOTE_GRAB_TIMEOUT}. */
+	/**
+	 * A held grab that doesn't move is re-sent this often, well within {@link #REMOTE_GRAB_TIMEOUT}.
+	 */
 	private static final long KEEPALIVE = 1_000_000_000L;
 	private static final long CAPTURE_MAX_AGE = 500_000_000L;
 	private static final int MAX_CHAIN = 3;
-	/** A hand slower than this (blocks/s) on a zone is resting there, not touching. */
+	/**
+	 * A hand slower than this (blocks/s) on a zone is resting there, not touching.
+	 */
 	private static final float TOY_MIN_SPEED = 0.3f;
-	/** Rigs further than this from the camera are not simulated. */
+	/**
+	 * Rigs further than this from the camera are not simulated.
+	 */
 	private static final double SIM_RANGE = 48;
-	/** Mobs keep ambient physics this long after being touched. */
+	/**
+	 * Mobs keep ambient physics this long after being touched.
+	 */
 	private static final long MOB_AMBIENT = 10_000_000_000L;
-	/** "Pose me": stepping further than this from where you were posed lets the pose go. */
+	/**
+	 * "Pose me": stepping further than this from where you were posed lets the pose go.
+	 */
 	private static final double POSE_LEAVE_DISTANCE = 1.2;
-	/** Player models are drawn at 15/16 scale. */
+	/**
+	 * Player models are drawn at 15/16 scale.
+	 */
 	private static final float PLAYER_MODEL_SCALE = 0.9375f;
-	/** Model volume (px^3) that reacts half as much to a push as a weightless part. */
+	/**
+	 * Model volume (px^3) that reacts half as much to a push as a weightless part.
+	 */
 	private static final float PUSH_HALF_MASS = 64f;
+	/**
+	 * A hand faster than this (blocks/s) on contact slaps instead of pushing.
+	 */
+	private static final float SLAP_SPEED = 3f;
+	/**
+	 * Speed of a punch, blocks per second, along the view direction.
+	 */
+	private static final float PUNCH_SPEED = 3.5f;
+	/**
+	 * Up to this much volume (px^3) a torso / part follows the hand fully.
+	 */
+	private static final float BODY_EASY_MASS = 400f, PART_EASY_MASS = 250f;
+	private final Cache<UUID, PlayerRig> rigs = Caffeine.newBuilder().maximumSize(1024).expireAfterAccess(Duration.ofMinutes(2)).build();
+	private final Cache<UUID, PermissionState> permissions = Caffeine.newBuilder().expireAfterWrite(Duration.ofHours(2)).build();
+	private final Cache<UUID, Map<Integer, Vector3f>> savedPoses = Caffeine.newBuilder().expireAfterAccess(Duration.ofMinutes(30)).build();
+	private final Cache<UUID, Protocol.OwnerTypes> ownerTypes = Caffeine.newBuilder().expireAfterWrite(Duration.ofHours(2)).build();
+	/**
+	 * When we last asked the server for a player's states.
+	 */
+	private final Cache<UUID, Long> stateRequests = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(10)).build();
+	private final Map<Grab.Key, Grab> grabs = new HashMap<>();
+	private final List<Supplier<List<HandSample>>> handSources = new ArrayList<>();
+	private final Map<String, Long> reactionCooldown = new HashMap<>();
+	/**
+	 * Client-only test dummies: never touch the network; value = their permissions.
+	 */
+	private final Map<UUID, PermissionState> localOnly = new HashMap<>();
+	private PermissionState ownPermissions;
+	@Getter
+	@Setter
+	private NetBridge net = NetBridge.NONE;
+	@Setter
+	private Animator animator = (n, v) -> false;
+	@Setter
+	private TouchListener touchListener;
+	private long lastFrame, lastStateSweep;
+	private long publishPoseAt = -1;
+	@Getter
+	private boolean permissionsPublished;
+	private String publishedTypesKey;
+	private long ownAnimUntil;
+	private String ownAnim;
+	/**
+	 * Where we stood when someone last posed us in "pose me" mode.
+	 */
+	private Vec3 poseAnchor;
+
+	private InteractionManager() {
+	}
 
 	public static InteractionManager get() {
 		return INSTANCE;
 	}
 
-	/** Plays a CPM command animation on the local player's own model; set by the CPM plugin. */
-	public interface Animator {
-		boolean play(String name, int value);
+	private static boolean isPlayer(PlayerRig rig) {
+		ClientLevel level = Minecraft.getInstance().level;
+		return level != null && level.getPlayerByUUID(rig.getUuid()) != null;
 	}
 
-	private final Cache<UUID, PlayerRig> rigs = Caffeine.newBuilder().maximumSize(1024).expireAfterAccess(Duration.ofMinutes(2)).build();
-	private final Cache<UUID, PermissionState> permissions = Caffeine.newBuilder().expireAfterWrite(Duration.ofHours(2)).build();
-	private final Cache<UUID, Map<Integer, Vector3f>> savedPoses = Caffeine.newBuilder().expireAfterAccess(Duration.ofMinutes(30)).build();
-	private final Cache<UUID, Protocol.OwnerTypes> ownerTypes = Caffeine.newBuilder().expireAfterWrite(Duration.ofHours(2)).build();
-	/** When we last asked the server for a player's states. */
-	private final Cache<UUID, Long> stateRequests = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(10)).build();
-	private final Map<Grab.Key, Grab> grabs = new HashMap<>();
-	private final List<Supplier<List<HandSample>>> handSources = new ArrayList<>();
-	private final Map<String, Long> reactionCooldown = new HashMap<>();
-	/** Client-only test dummies: never touch the network; value = their permissions. */
-	private final Map<UUID, PermissionState> localOnly = new HashMap<>();
-	private PermissionState ownPermissions;
-
-	@Getter @Setter private NetBridge net = NetBridge.NONE;
-	@Setter private Animator animator = (n, v) -> false;
-	/** Told when a hand touches a part; VR uses it for haptics. */
-	public interface TouchListener {
-		void touched(HandSample hand, PartHit hit);
+	private static Map<Integer, PartType> parseTypes(Map<String, String> raw) {
+		if (raw == null || raw.isEmpty()) return Map.of();
+		Map<Integer, PartType> out = new HashMap<>();
+		raw.forEach((id, name) -> {
+			try {
+				out.put(Integer.parseInt(id), PartType.valueOf(name));
+			} catch (IllegalArgumentException ignored) {
+			}
+		});
+		return out;
 	}
 
-	@Setter private TouchListener touchListener;
-	private long lastFrame, lastStateSweep;
-	private long publishPoseAt = -1;
-	@Getter private boolean permissionsPublished;
-	private String publishedTypesKey;
+	/**
+	 * The entity a rig belongs to, by the id the renderer gave us, checked against the uuid.
+	 */
+	public static Entity entityOf(ClientLevel level, PlayerRig rig) {
+		if (level == null) return null;
+		Entity e = rig.getEntityId() != -1 ? level.getEntity(rig.getEntityId()) : null;
+		if (e != null && e.getUUID().equals(rig.getUuid())) return e;
+		return level.getPlayerByUUID(rig.getUuid());
+	}
 
-	private InteractionManager() {}
+	private static void slapSound(PlayerRig rig, PartHit hit) {
+		ClientLevel level = Minecraft.getInstance().level;
+		if (level == null || !MiConfig.get().isSounds()) return;
+		Vector3f w = rig.getModelToWorld().transformPosition(new Vector3f(hit.pointModel()));
+		level.playLocalSound(w.x, w.y, w.z, SoundEvents.PLAYER_ATTACK_WEAK,
+				SoundSource.PLAYERS, 0.8f, 1.3f + level.getRandom().nextFloat() * 0.3f, false);
+	}
+
+	// ------------------------------------------------------------------ dummies
+
+	/**
+	 * 1 up to {@code easy}, then falling as 1/sqrt(mass), never below {@code min}.
+	 */
+	private static float compliance(float massPx3, float easy, float min) {
+		return Math.clamp((float) Math.sqrt(easy / Math.max(massPx3, easy)), min, 1f);
+	}
+
+	/**
+	 * 1 for a weightless part, 1/2 at {@link #PUSH_HALF_MASS}... heavier parts barely move.
+	 */
+	private static float massFactor(float massPx3) {
+		return (float) (1 / Math.sqrt(1 + Math.max(massPx3, 0) / PUSH_HALF_MASS * 3));
+	}
+
+	/**
+	 * Permission needed to grab this bone, after resolving rigid parts to what really moves.
+	 */
+	public static InteractionKind kindOf(PlayerRig rig, int boneId) {
+		if (boneId == Wire.BODY_BONE) return InteractionKind.TURN_BODY;
+		Bone b = rig.bone(boneId);
+		return b == null ? InteractionKind.GRAB_OTHER : InteractionKind.grabOf(b.getType());
+	}
+
+	private static String nameOf(UUID uuid) {
+		ClientLevel level = Minecraft.getInstance().level;
+		Player p = level == null ? null : level.getPlayerByUUID(uuid);
+		return p == null ? "" : p.getName().getString();
+	}
+
+	/**
+	 * Bone a hit really moves: itself, its first movable parent, or the torso.
+	 */
+	public static int grabTarget(PartHit hit) {
+		Bone m = hit.bone().movable();
+		return m == null || m.isRoot() && m.getType() == PartType.STATIC ? Wire.BODY_BONE : m.getId();
+	}
+
+	public static boolean isSoft(PartType t) {
+		return PlayerRig.isSoft(t);
+	}
+
+	// ------------------------------------------------------------------ part types
 
 	public PlayerRig rig(UUID uuid) {
 		return rigs.get(uuid, PlayerRig::new);
@@ -116,6 +219,8 @@ public final class InteractionManager {
 	public void addHandSource(Supplier<List<HandSample>> source) {
 		handSources.add(source);
 	}
+
+	// ------------------------------------------------------------------ frame
 
 	public void onRigRebuilt(PlayerRig rig) {
 		Map<Integer, Vector3f> pose = savedPoses.getIfPresent(rig.getUuid());
@@ -140,16 +245,12 @@ public final class InteractionManager {
 		UUID self = self();
 		for (PlayerRig rig : rigs.asMap().values()) {
 			UUID u = rig.getUuid();
-			if (u.equals(self) || localOnly.containsKey(u) || permissions.getIfPresent(u) != null || !isPlayer(rig)) continue;
+			if (u.equals(self) || localOnly.containsKey(u) || permissions.getIfPresent(u) != null || !isPlayer(rig))
+				continue;
 			if (stateRequests.getIfPresent(u) != null) continue;
 			stateRequests.put(u, System.nanoTime());
 			net.requestStates(u);
 		}
-	}
-
-	private static boolean isPlayer(PlayerRig rig) {
-		ClientLevel level = Minecraft.getInstance().level;
-		return level != null && level.getPlayerByUUID(rig.getUuid()) != null;
 	}
 
 	public void clear() {
@@ -167,8 +268,6 @@ public final class InteractionManager {
 		poseAnchor = null;
 	}
 
-	// ------------------------------------------------------------------ dummies
-
 	public void registerLocalDummy(UUID uuid) {
 		localOnly.put(uuid, PermissionState.ALL);
 		rigs.invalidate(uuid);
@@ -181,7 +280,9 @@ public final class InteractionManager {
 		grabs.values().removeIf(g -> g.getTarget().equals(uuid));
 	}
 
-	/** Puts a dummy in or out of "pose me" mode. */
+	/**
+	 * Puts a dummy in or out of "pose me" mode.
+	 */
 	public void setDummyFree(UUID uuid, boolean free) {
 		if (localOnly.containsKey(uuid)) localOnly.put(uuid, free ? PermissionState.ALL_FREE : PermissionState.ALL);
 	}
@@ -190,7 +291,9 @@ public final class InteractionManager {
 		return localOnly.containsKey(uuid);
 	}
 
-	/** Our own permissions changed in the config. */
+	/**
+	 * Our own permissions changed in the config.
+	 */
 	public void onConfigChanged() {
 		ownPermissions = null;
 		publishOwnPermissions();
@@ -201,25 +304,13 @@ public final class InteractionManager {
 		if (!localOnly.containsKey(target)) net.sendAction(act);
 	}
 
-	// ------------------------------------------------------------------ part types
-
-	/** Part types the owner picked for this model, or an empty map. */
+	/**
+	 * Part types the owner picked for this model, or an empty map.
+	 */
 	public Map<Integer, PartType> ownerTypes(UUID owner, String modelKey) {
 		if (owner.equals(self())) return parseTypes(MiConfig.get().getOwnTypes().get(modelKey));
 		Protocol.OwnerTypes t = ownerTypes.getIfPresent(owner);
 		return t != null && t.modelKey().equals(modelKey) ? t.types() : Map.of();
-	}
-
-	private static Map<Integer, PartType> parseTypes(Map<String, String> raw) {
-		if (raw == null || raw.isEmpty()) return Map.of();
-		Map<Integer, PartType> out = new HashMap<>();
-		raw.forEach((id, name) -> {
-			try {
-				out.put(Integer.parseInt(id), PartType.valueOf(name));
-			} catch (IllegalArgumentException ignored) {
-			}
-		});
-		return out;
 	}
 
 	/**
@@ -248,8 +339,6 @@ public final class InteractionManager {
 			publishedTypesKey = rig.getModelKey();
 		}
 	}
-
-	// ------------------------------------------------------------------ frame
 
 	public void onFrame(Minecraft mc, float partialTick) {
 		long now = System.nanoTime();
@@ -328,14 +417,6 @@ public final class InteractionManager {
 		}
 	}
 
-	/** The entity a rig belongs to, by the id the renderer gave us, checked against the uuid. */
-	public static Entity entityOf(ClientLevel level, PlayerRig rig) {
-		if (level == null) return null;
-		Entity e = rig.getEntityId() != -1 ? level.getEntity(rig.getEntityId()) : null;
-		if (e != null && e.getUUID().equals(rig.getUuid())) return e;
-		return level.getPlayerByUUID(rig.getUuid());
-	}
-
 	private void updateWorld(PlayerRig rig, Entity e, float partial, float dt, long now) {
 		Vec3 pos = e.getPosition(partial);
 		float bodyYaw = e instanceof LivingEntity le ? Mth.rotLerp(partial, le.yBodyRotO, le.yBodyRot) : e.getYRot();
@@ -372,7 +453,9 @@ public final class InteractionManager {
 		rig.updateMotion(dt, bodyYaw);
 	}
 
-	/** In the air and held by exactly one part: where that grip is, in model space. */
+	/**
+	 * In the air and held by exactly one part: where that grip is, in model space.
+	 */
 	private Vector3f hangPoint(PlayerRig rig) {
 		Vector3f point = null;
 		for (Grab g : grabs.values()) {
@@ -384,6 +467,8 @@ public final class InteractionManager {
 		}
 		return point;
 	}
+
+	// ------------------------------------------------------------------ permissions
 
 	private void applyGrab(PlayerRig rig, Grab g, float dt) {
 		if (!g.isPrivateOnly() && !allowed(g.getTarget(), g.getKey().grabber(), kindOf(rig, g.getBoneId()))) return;
@@ -449,7 +534,8 @@ public final class InteractionManager {
 				// your own hands don't knock you over, but you may touch your own zones
 				PartHit own = HitTester.sphere(rig, h.pos(), 0.05f, b -> true);
 				// resting hands are always near the hips: only a moving hand counts
-				if (own != null && vel.length() > TOY_MIN_SPEED) ToyZones.touched(rig, own.bone(), own.pointModel(), h.owner(), Math.clamp(vel.length() / 2.5f, 0.15f, 1f));
+				if (own != null && vel.length() > TOY_MIN_SPEED)
+					ToyZones.touched(rig, own.bone(), own.pointModel(), h.owner(), Math.clamp(vel.length() / 2.5f, 0.15f, 1f));
 				continue;
 			}
 			boolean slap = vel.length() > SLAP_SPEED;
@@ -458,7 +544,8 @@ public final class InteractionManager {
 			PartHit hit = HitTester.sphere(rig, h.pos(), 0.05f, b -> true);
 			if (hit == null) continue;
 			if (touchListener != null) touchListener.touched(h, hit);
-			if (vel.length() > TOY_MIN_SPEED) ToyZones.touched(rig, hit.bone(), hit.pointModel(), h.owner(), Math.clamp(vel.length() / 2.5f, 0.15f, 1f));
+			if (vel.length() > TOY_MIN_SPEED)
+				ToyZones.touched(rig, hit.bone(), hit.pointModel(), h.owner(), Math.clamp(vel.length() / 2.5f, 0.15f, 1f));
 			Vector3f velModel = rig.getWorldToModel().transformDirection(vel, new Vector3f());
 			if (slap) {
 				slap(rig, hit, velModel);
@@ -474,12 +561,13 @@ public final class InteractionManager {
 	 * whole body. Points and velocity in the rig's (turned) model space.
 	 */
 	private void push(PlayerRig rig, Bone hitBone, Vector3f contactModel, Vector3f velModel, UUID actor, float strength,
-			float maxPart, float maxBody, float bodyShare) {
+	                  float maxPart, float maxBody, float bodyShare) {
 		rig.setTouchedNanos(System.nanoTime());
 		Matrix4f inv = new Matrix4f();
 		int depth = 0;
 		for (Bone b = hitBone.movable(); b != null && depth <= MAX_CHAIN; b = b.getParent(), depth++) {
-			if (!b.getType().isGrabbable() || !mayLocally(rig.getUuid(), actor, InteractionKind.grabOf(b.getType()))) break;
+			if (!b.getType().isGrabbable() || !mayLocally(rig.getUuid(), actor, InteractionKind.grabOf(b.getType())))
+				break;
 			SpringJoint j = rig.joint(b.getId());
 			if (j == null || j.isHeld()) break;
 			b.parentModel().invert(inv);
@@ -502,9 +590,6 @@ public final class InteractionManager {
 		body.addImpulse(SpringJoint.clamp(dw, maxBody));
 	}
 
-	/** A hand faster than this (blocks/s) on contact slaps instead of pushing. */
-	private static final float SLAP_SPEED = 3f;
-
 	/**
 	 * A slap: the part that was hit takes it (a cheek turns the head, an ear flicks, soft
 	 * parts wobble), the body barely moves. Ours is sent once; everyone plays the sound.
@@ -522,18 +607,9 @@ public final class InteractionManager {
 		}
 	}
 
-	private static void slapSound(PlayerRig rig, PartHit hit) {
-		ClientLevel level = Minecraft.getInstance().level;
-		if (level == null || !MiConfig.get().isSounds()) return;
-		Vector3f w = rig.getModelToWorld().transformPosition(new Vector3f(hit.pointModel()));
-		level.playLocalSound(w.x, w.y, w.z, SoundEvents.PLAYER_ATTACK_WEAK,
-				SoundSource.PLAYERS, 0.8f, 1.3f + level.getRandom().nextFloat() * 0.3f, false);
-	}
-
-	/** Speed of a punch, blocks per second, along the view direction. */
-	private static final float PUNCH_SPEED = 3.5f;
-
-	/** PC: hitting a part with an empty hand knocks it the way you hit. */
+	/**
+	 * PC: hitting a part with an empty hand knocks it the way you hit.
+	 */
 	public void punch(PartHit hit, Vector3f lookWorld) {
 		UUID self = self();
 		PlayerRig rig = hit.rig();
@@ -542,29 +618,8 @@ public final class InteractionManager {
 		Vector3f velModel = rig.getWorldToModel().transformDirection(new Vector3f(lookWorld).normalize(PUNCH_SPEED), new Vector3f());
 		float strength = MiConfig.get().getPhysics().getTouchStrength();
 		push(rig, hit.bone(), hit.pointModel(), velModel, self, strength, 9f, 1.5f, 1f);
-		if (shared(rig, self, grabTarget(hit))) send(rig.getUuid(), Protocol.push(rig.getUuid(), hit.bone().getId(), hit.pointModel(), velModel));
-	}
-
-	/** Up to this much volume (px^3) a torso / part follows the hand fully. */
-	private static final float BODY_EASY_MASS = 400f, PART_EASY_MASS = 250f;
-
-	/** 1 up to {@code easy}, then falling as 1/sqrt(mass), never below {@code min}. */
-	private static float compliance(float massPx3, float easy, float min) {
-		return Math.clamp((float) Math.sqrt(easy / Math.max(massPx3, easy)), min, 1f);
-	}
-
-	/** 1 for a weightless part, 1/2 at {@link #PUSH_HALF_MASS}... heavier parts barely move. */
-	private static float massFactor(float massPx3) {
-		return (float) (1 / Math.sqrt(1 + Math.max(massPx3, 0) / PUSH_HALF_MASS * 3));
-	}
-
-	// ------------------------------------------------------------------ permissions
-
-	/** Permission needed to grab this bone, after resolving rigid parts to what really moves. */
-	public static InteractionKind kindOf(PlayerRig rig, int boneId) {
-		if (boneId == Wire.BODY_BONE) return InteractionKind.TURN_BODY;
-		Bone b = rig.bone(boneId);
-		return b == null ? InteractionKind.GRAB_OTHER : InteractionKind.grabOf(b.getType());
+		if (shared(rig, self, grabTarget(hit)))
+			send(rig.getUuid(), Protocol.push(rig.getUuid(), hit.bone().getId(), hit.pointModel(), velModel));
 	}
 
 	public boolean allowed(UUID target, UUID actor, InteractionKind kind) {
@@ -581,7 +636,9 @@ public final class InteractionManager {
 		return MiConfig.get().isLocalWhenDenied() && actor.equals(self());
 	}
 
-	/** Permissions of anything that can be interacted with: you, players, dummies, mobs. */
+	/**
+	 * Permissions of anything that can be interacted with: you, players, dummies, mobs.
+	 */
 	private PermissionState stateOf(UUID target) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player != null && target.equals(mc.player.getUUID())) return ownPermissions();
@@ -594,21 +651,19 @@ public final class InteractionManager {
 		return MiConfig.get().isInteractWithoutMod() ? PermissionState.UNKNOWN : PermissionState.NONE;
 	}
 
-	/** The owner asked to be posed: what others let go of keeps its shape. */
+	/**
+	 * The owner asked to be posed: what others let go of keeps its shape.
+	 */
 	public boolean isFreeMode(UUID target) {
 		return stateOf(target).freeMode();
 	}
+
+	// ------------------------------------------------------------------ local actions
 
 	private PermissionState ownPermissions() {
 		PermissionState p = ownPermissions;
 		if (p == null) ownPermissions = p = PermissionState.fromConfig(MiConfig.get().getPermissions());
 		return p;
-	}
-
-	private static String nameOf(UUID uuid) {
-		ClientLevel level = Minecraft.getInstance().level;
-		Player p = level == null ? null : level.getPlayerByUUID(uuid);
-		return p == null ? "" : p.getName().getString();
 	}
 
 	public PermissionState permissionsOf(UUID uuid) {
@@ -620,17 +675,9 @@ public final class InteractionManager {
 		if (permissionsPublished) publishOwnTypes();
 	}
 
-	// ------------------------------------------------------------------ local actions
-
 	private UUID self() {
 		Minecraft mc = Minecraft.getInstance();
 		return mc.player == null ? null : mc.player.getUUID();
-	}
-
-	/** Bone a hit really moves: itself, its first movable parent, or the torso. */
-	public static int grabTarget(PartHit hit) {
-		Bone m = hit.bone().movable();
-		return m == null || m.isRoot() && m.getType() == PartType.STATIC ? Wire.BODY_BONE : m.getId();
 	}
 
 	public boolean canGrab(PartHit hit) {
@@ -640,7 +687,9 @@ public final class InteractionManager {
 		return mayLocally(rig.getUuid(), self, kindOf(rig, grabTarget(hit)));
 	}
 
-	/** Others would see this grab: the owner allows it and it isn't a local dummy. */
+	/**
+	 * Others would see this grab: the owner allows it and it isn't a local dummy.
+	 */
 	private boolean shared(PlayerRig rig, UUID self, int boneId) {
 		return !localOnly.containsKey(rig.getUuid()) && allowed(rig.getUuid(), self, kindOf(rig, boneId));
 	}
@@ -677,7 +726,9 @@ public final class InteractionManager {
 		return self == null ? null : grabs.get(new Grab.Key(self, hand));
 	}
 
-	/** How readily what this grab holds gives in, 0..1 (1 = light). */
+	/**
+	 * How readily what this grab holds gives in, 0..1 (1 = light).
+	 */
 	public float complianceOf(Grab g) {
 		PlayerRig rig = rigs.getIfPresent(g.getTarget());
 		if (rig == null) return 1f;
@@ -685,7 +736,9 @@ public final class InteractionManager {
 		return j == null ? 1f : j.getCompliance();
 	}
 
-	/** Moves a held local grab to a world-space point. */
+	/**
+	 * Moves a held local grab to a world-space point.
+	 */
 	public void updateLocalGrab(int hand, Vector3f worldPoint) {
 		Grab g = localGrab(hand);
 		if (g == null) return;
@@ -696,11 +749,14 @@ public final class InteractionManager {
 		g.setLastUpdateNanos(System.nanoTime());
 	}
 
-	/** World position of the held bone's grabbed point (where the hand "should" be). */
+	/**
+	 * World position of the held bone's grabbed point (where the hand "should" be).
+	 */
 	public Vector3f grabbedPointWorld(Grab g, Vector3f dest) {
 		PlayerRig rig = rigs.getIfPresent(g.getTarget());
 		if (rig == null) return null;
-		if (g.getBoneId() == Wire.BODY_BONE) return rig.getModelToWorld().transformPosition(dest.set(g.getAnchorLocal()));
+		if (g.getBoneId() == Wire.BODY_BONE)
+			return rig.getModelToWorld().transformPosition(dest.set(g.getAnchorLocal()));
 		Bone b = rig.bone(g.getBoneId());
 		if (b == null) return null;
 		return rig.getModelToWorld().transformPosition(b.deformed().transformPosition(dest.set(g.getAnchorLocal())));
@@ -726,7 +782,9 @@ public final class InteractionManager {
 		if (pin && g.getTarget().equals(self)) posedNow();
 	}
 
-	/** Shift-release keeps a shape if the owner allows it; in "pose me" mode everything does. */
+	/**
+	 * Shift-release keeps a shape if the owner allows it; in "pose me" mode everything does.
+	 */
 	private boolean keepsShape(UUID target, UUID actor, boolean keepRequested) {
 		if (isFreeMode(target)) return true;
 		return keepRequested && allowed(target, actor, InteractionKind.PIN);
@@ -737,7 +795,8 @@ public final class InteractionManager {
 		if (self == null || !mayLocally(rig.getUuid(), self, InteractionKind.PET)) return false;
 		if (!cooldown("pet:" + rig.getUuid(), 400)) return true;
 		onPet(rig.getUuid(), self);
-		if (allowed(rig.getUuid(), self, InteractionKind.PET)) send(rig.getUuid(), Protocol.act(Wire.OP_PET, rig.getUuid()));
+		if (allowed(rig.getUuid(), self, InteractionKind.PET))
+			send(rig.getUuid(), Protocol.act(Wire.OP_PET, rig.getUuid()));
 		return true;
 	}
 
@@ -750,7 +809,9 @@ public final class InteractionManager {
 		return true;
 	}
 
-	/** Drops all deformations on yourself, makes everyone let go and leaves "pose me" mode. */
+	/**
+	 * Drops all deformations on yourself, makes everyone let go and leaves "pose me" mode.
+	 */
 	public void resetSelf() {
 		UUID self = self();
 		if (self == null) return;
@@ -768,7 +829,9 @@ public final class InteractionManager {
 		}
 	}
 
-	/** Keeps your current shape (e.g. after adjusting your own tail in VR). */
+	/**
+	 * Keeps your current shape (e.g. after adjusting your own tail in VR).
+	 */
 	public void pinSelf() {
 		UUID self = self();
 		PlayerRig rig = self == null ? null : rigs.getIfPresent(self);
@@ -777,7 +840,9 @@ public final class InteractionManager {
 		schedulePosePublish();
 	}
 
-	/** Resets a local dummy. */
+	/**
+	 * Resets a local dummy.
+	 */
 	public void resetLocal(UUID target) {
 		if (!localOnly.containsKey(target)) return;
 		PlayerRig rig = rigs.getIfPresent(target);
@@ -819,7 +884,9 @@ public final class InteractionManager {
 		}
 	}
 
-	/** Holding a player's (or dummy's) head turns it towards us, if they allow it. */
+	/**
+	 * Holding a player's (or dummy's) head turns it towards us, if they allow it.
+	 */
 	private void lookIfHead(Grab g) {
 		PlayerRig rig = rigs.getIfPresent(g.getTarget());
 		Bone b = rig == null ? null : rig.bone(g.getBoneId());
@@ -881,6 +948,8 @@ public final class InteractionManager {
 		publishPoseAt = System.nanoTime() + 600_000_000L; // let springs settle first
 	}
 
+	// ------------------------------------------------------------------ network in
+
 	private void publishOwnPose() {
 		UUID self = self();
 		PlayerRig rig = self == null ? null : rigs.getIfPresent(self);
@@ -911,9 +980,9 @@ public final class InteractionManager {
 		});
 	}
 
-	// ------------------------------------------------------------------ network in
-
-	/** An action another client did. {@code sender} comes from the server, never from the message. */
+	/**
+	 * An action another client did. {@code sender} comes from the server, never from the message.
+	 */
 	public void handleAction(UUID sender, Wire.Act act) {
 		UUID self = self();
 		if (sender == null || sender.equals(self)) return;
@@ -946,10 +1015,12 @@ public final class InteractionManager {
 				}
 			}
 			case Wire.OP_PET -> {
-				if (allowed(target, sender, InteractionKind.PET) && cooldown("rx-pet:" + sender, 300)) onPet(target, sender);
+				if (allowed(target, sender, InteractionKind.PET) && cooldown("rx-pet:" + sender, 300))
+					onPet(target, sender);
 			}
 			case Wire.OP_HUG -> {
-				if (allowed(target, sender, InteractionKind.HUG) && cooldown("rx-hug:" + sender, 1500)) onHug(target, sender);
+				if (allowed(target, sender, InteractionKind.HUG) && cooldown("rx-hug:" + sender, 1500))
+					onHug(target, sender);
 			}
 			case Wire.OP_PUSH -> {
 				PlayerRig rig = rigs.getIfPresent(target);
@@ -985,7 +1056,11 @@ public final class InteractionManager {
 		}
 	}
 
-	/** A state another player published about themselves. */
+	// ------------------------------------------------------------------ reactions
+
+	/**
+	 * A state another player published about themselves.
+	 */
 	public void handleState(UUID owner, int state, byte[] body) {
 		if (owner == null || owner.equals(self())) return;
 		try {
@@ -1019,8 +1094,6 @@ public final class InteractionManager {
 		grabs.values().removeIf(g -> g.getTarget().equals(owner) && !allowed(owner, g.getKey().grabber(), kindOf(rig, g.getBoneId())));
 	}
 
-	// ------------------------------------------------------------------ reactions
-
 	private void onPet(UUID target, UUID actor) {
 		PlayerRig rig = rig(target);
 		rig.setTouchedNanos(System.nanoTime());
@@ -1037,9 +1110,6 @@ public final class InteractionManager {
 		if (target.equals(self) || actor.equals(self)) playOwn(MiConfig.get().getReactions().getHugAnimation());
 	}
 
-	private long ownAnimUntil;
-	private String ownAnim;
-
 	private void playOwn(String name) {
 		if (name == null || name.isBlank()) return;
 		if (animator.play(name, 1)) {
@@ -1048,10 +1118,9 @@ public final class InteractionManager {
 		}
 	}
 
-	/** Where we stood when someone last posed us in "pose me" mode. */
-	private Vec3 poseAnchor;
-
-	/** Someone (maybe us) left a shape on us: publish it, and remember where we stood. */
+	/**
+	 * Someone (maybe us) left a shape on us: publish it, and remember where we stood.
+	 */
 	private void posedNow() {
 		schedulePosePublish();
 		Minecraft mc = Minecraft.getInstance();
@@ -1084,7 +1153,9 @@ public final class InteractionManager {
 		net.publishState(Wire.S_POSE, Protocol.pose(Map.of()));
 	}
 
-	/** Stops timed reaction animations; called every client tick. */
+	/**
+	 * Stops timed reaction animations; called every client tick.
+	 */
 	public void tick() {
 		checkPoseLeave();
 		if (ownAnim != null && System.currentTimeMillis() > ownAnimUntil) {
@@ -1107,7 +1178,17 @@ public final class InteractionManager {
 		}
 	}
 
-	public static boolean isSoft(PartType t) {
-		return PlayerRig.isSoft(t);
+	/**
+	 * Plays a CPM command animation on the local player's own model; set by the CPM plugin.
+	 */
+	public interface Animator {
+		boolean play(String name, int value);
+	}
+
+	/**
+	 * Told when a hand touches a part; VR uses it for haptics.
+	 */
+	public interface TouchListener {
+		void touched(HandSample hand, PartHit hit);
 	}
 }

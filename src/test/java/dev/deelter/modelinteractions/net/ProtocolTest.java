@@ -1,31 +1,30 @@
 package dev.deelter.modelinteractions.net;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-
-import org.joml.Vector3f;
-import org.junit.jupiter.api.Test;
-
 import dev.deelter.modelinteractions.config.PermissionMode;
 import dev.deelter.modelinteractions.interaction.InteractionKind;
 import dev.deelter.modelinteractions.interaction.PermissionState;
 import dev.deelter.modelinteractions.physics.PartType;
 import dev.deelter.modelinteractions.wire.Wire;
+import org.joml.Vector3f;
+import org.junit.jupiter.api.Test;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.util.*;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class ProtocolTest {
 	private static final UUID T = UUID.randomUUID(), S = UUID.randomUUID();
+
+	private static void readAct(byte[] m) throws IOException {
+		DataInputStream in = Wire.in(m);
+		Wire.kind(in);
+		Wire.readAct(in);
+		Wire.end(in);
+	}
 
 	@Test
 	void actRoundTripWithServerStampedSender() throws IOException {
@@ -44,13 +43,13 @@ class ProtocolTest {
 		assertEquals(T, b.target());
 		assertEquals(42, b.bone());
 		assertEquals(2, b.hand());
-		assertArrayEquals(new float[] { 1, 2, 3 }, b.point());
+		assertArrayEquals(new float[]{1, 2, 3}, b.point());
 	}
 
 	@Test
 	void outOfRangePointsAreClampedBeforeSending() {
 		Wire.Act a = Protocol.move(T, 1, 0, new Vector3f(1e9f, Float.NaN, -1e9f));
-		assertArrayEquals(new float[] { Wire.MAX_COORD, 0, -Wire.MAX_COORD }, a.point());
+		assertArrayEquals(new float[]{Wire.MAX_COORD, 0, -Wire.MAX_COORD}, a.point());
 	}
 
 	@Test
@@ -77,13 +76,6 @@ class ProtocolTest {
 		t[0] = Wire.VERSION;
 		t[1] = Wire.K_ACT;
 		assertThrows(IOException.class, () -> readAct(t));
-	}
-
-	private static void readAct(byte[] m) throws IOException {
-		DataInputStream in = Wire.in(m);
-		Wire.kind(in);
-		Wire.readAct(in);
-		Wire.end(in);
 	}
 
 	@Test
@@ -114,7 +106,7 @@ class ProtocolTest {
 		out.writeInt(0);
 		out.writeByte(1);
 		out.writeByte(3);
-		out.write(new byte[] { 'a', 7, 'b' });
+		out.write(new byte[]{'a', 7, 'b'});
 		out.writeByte(0);
 		assertThrows(IOException.class, () -> Wire.decodePerm(bo.toByteArray()));
 

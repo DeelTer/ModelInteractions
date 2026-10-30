@@ -1,15 +1,6 @@
 package dev.deelter.modelinteractions.plugin;
 
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-
+import dev.deelter.modelinteractions.wire.Wire;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -27,7 +18,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.jetbrains.annotations.NotNull;
 
-import dev.deelter.modelinteractions.wire.Wire;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Relays Model Interactions messages between nearby players that have the mod.
@@ -53,15 +47,24 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
 	private final Map<UUID, Long> lastHello = new ConcurrentHashMap<>();
 	private Settings settings;
+	private Carrying carrying;
+
+	private static double clamp(double v, double min, double max) {
+		return Math.max(min, Math.min(max, v));
+	}
+
+	/**
+	 * Permissions as others see them: no name lists. Whitelist mode becomes "everyone" because
+	 * this plugin already drops actions from players the owner did not list.
+	 */
+	static byte[] redacted(Wire.Perm p) {
+		int mode = p.mode() == 1 ? 0 : p.mode();
+		return Wire.encodePerm(new Wire.Perm(mode, p.flags(), List.of(), List.of()));
+	}
 
 	double range() {
 		return settings.range();
 	}
-	private Carrying carrying;
-
-	record Settings(double range, double reach, double stateRange, boolean mobs, int maxWatchers,
-			double actRate, double actBurst, double stateRate, double stateBurst, double reqRate, double reqBurst,
-			long petCooldownMs, long hugCooldownMs) {}
 
 	@Override
 	public void onEnable() {
@@ -109,10 +112,6 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 				clamp(c.getDouble("rate.requests-burst", 24), 1, 500),
 				(long) clamp(c.getLong("cooldown.pet-ms", 250), 0, 10_000),
 				(long) clamp(c.getLong("cooldown.hug-ms", 1000), 0, 60_000));
-	}
-
-	private static double clamp(double v, double min, double max) {
-		return Math.max(min, Math.min(max, v));
 	}
 
 	// ------------------------------------------------------------------ sessions
@@ -203,7 +202,8 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 			}
 		} catch (IOException | RuntimeException e) {
 			s.strikes++;
-			if (s.strikes == 20) getLogger().warning(player.getName() + " keeps sending malformed interaction messages");
+			if (s.strikes == 20)
+				getLogger().warning(player.getName() + " keeps sending malformed interaction messages");
 		}
 	}
 
@@ -251,7 +251,9 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		relay(Wire.encodeAct(act, sender.getUniqueId()), t.getLocation(), settings.range(), sender);
 	}
 
-	/** Turning someone's head: only a player who allows it; everyone near sees their model's head turn. */
+	/**
+	 * Turning someone's head: only a player who allows it; everyone near sees their model's head turn.
+	 */
 	private void onLook(Player sender, Wire.Look l) {
 		if (!canAct(sender)) return;
 		Player tp = getServer().getPlayer(l.target());
@@ -269,7 +271,9 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		return !p.isDead() && p.getGameMode() != GameMode.SPECTATOR;
 	}
 
-	/** The target exists, is alive, in the sender's world and within reach of the sender. */
+	/**
+	 * The target exists, is alive, in the sender's world and within reach of the sender.
+	 */
 	private boolean reachable(Player sender, Entity t) {
 		if (!(t instanceof LivingEntity le) || !t.isValid() || le.isDead()) return false;
 		if (!t.getWorld().equals(sender.getWorld())) return false;
@@ -296,28 +300,20 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		relay(Wire.encodeState(state, owner.getUniqueId(), body), owner.getLocation(), settings.stateRange(), owner);
 	}
 
-	/**
-	 * Permissions as others see them: no name lists. Whitelist mode becomes "everyone" because
-	 * this plugin already drops actions from players the owner did not list.
-	 */
-	static byte[] redacted(Wire.Perm p) {
-		int mode = p.mode() == 1 ? 0 : p.mode();
-		return Wire.encodePerm(new Wire.Perm(mode, p.flags(), List.of(), List.of()));
-	}
-
 	private void onRequest(Player asker, UUID target) {
 		Player tp = getServer().getPlayer(target);
 		Session ts = tp == null ? null : sessions.get(target);
 		if (ts == null || !tp.getWorld().equals(asker.getWorld())) return;
-		if (tp.getLocation().distanceSquared(asker.getLocation()) > settings.stateRange() * settings.stateRange()) return;
+		if (tp.getLocation().distanceSquared(asker.getLocation()) > settings.stateRange() * settings.stateRange())
+			return;
 		for (int i = 0; i < Wire.S_COUNT; i++) {
 			if (ts.stored[i] != null) send(asker, Wire.encodeState(i, target, ts.stored[i]));
 		}
 	}
 
-	// ------------------------------------------------------------------ outgoing
-
-	/** To the nearest players with the mod around {@code at}, except the sender. */
+	/**
+	 * To the nearest players with the mod around {@code at}, except the sender.
+	 */
 	void relay(byte[] msg, Location at, double range, Player except) {
 		World w = at.getWorld();
 		if (w == null) return;
@@ -333,11 +329,11 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		for (Player p : out) send(p, msg);
 	}
 
+	// ------------------------------------------------------------------ outgoing
+
 	void send(Player p, byte[] msg) {
 		p.sendPluginMessage(this, Wire.CHANNEL, msg);
 	}
-
-	// ------------------------------------------------------------------ admin
 
 	@Override
 	public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
@@ -353,5 +349,13 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 			return true;
 		}
 		return false;
+	}
+
+	// ------------------------------------------------------------------ admin
+
+	record Settings(double range, double reach, double stateRange, boolean mobs, int maxWatchers,
+	                double actRate, double actBurst, double stateRate, double stateBurst, double reqRate,
+	                double reqBurst,
+	                long petCooldownMs, long hugCooldownMs) {
 	}
 }

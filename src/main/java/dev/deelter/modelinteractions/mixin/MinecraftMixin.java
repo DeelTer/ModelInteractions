@@ -1,15 +1,16 @@
 package dev.deelter.modelinteractions.mixin;
 
+import dev.deelter.modelinteractions.input.PcInput;
+import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import dev.deelter.modelinteractions.input.PcInput;
-import net.minecraft.client.Minecraft;
-
-/** Right mouse on a model part grabs or pets it; an empty-handed hit knocks it and digs nothing behind it. */
+/**
+ * Right mouse on a model part grabs or pets it; an empty-handed hit knocks it and digs nothing behind it.
+ */
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
 	@Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)

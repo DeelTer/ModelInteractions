@@ -1,6 +1,8 @@
 package dev.deelter.modelinteractions.plugin;
 
-/** Allows {@code rate} events per second on average and bursts of up to {@code burst}. */
+/**
+ * Allows {@code rate} events per second on average and bursts of up to {@code burst}.
+ */
 final class TokenBucket {
 	private double rate, burst, tokens;
 	private long last = System.nanoTime();

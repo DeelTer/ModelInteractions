@@ -1,15 +1,17 @@
 package dev.deelter.modelinteractions.interaction;
 
-import java.util.function.Predicate;
-
+import dev.deelter.modelinteractions.model.Bone;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
-import dev.deelter.modelinteractions.model.Bone;
+import java.util.function.Predicate;
 
-/** Ray and sphere tests against bone boxes. Pure math, all inputs in world space. */
+/**
+ * Ray and sphere tests against bone boxes. Pure math, all inputs in world space.
+ */
 public final class HitTester {
-	private HitTester() {}
+	private HitTester() {
+	}
 
 	public static PartHit raycast(PlayerRig rig, Vector3f origin, Vector3f dir, float maxDist, Predicate<Bone> filter) {
 		if (!rig.isWorldValid()) return null;
@@ -35,7 +37,9 @@ public final class HitTester {
 		return best;
 	}
 
-	/** Closest bone whose box is within {@code radius} of a world point. */
+	/**
+	 * Closest bone whose box is within {@code radius} of a world point.
+	 */
 	public static PartHit sphere(PlayerRig rig, Vector3f center, float radius, Predicate<Bone> filter) {
 		if (!rig.isWorldValid()) return null;
 		PartHit best = null;
@@ -54,7 +58,9 @@ public final class HitTester {
 		return best;
 	}
 
-	/** Ray/AABB slab test, returns entry t (0 if inside) or -1. */
+	/**
+	 * Ray/AABB slab test, returns entry t (0 if inside) or -1.
+	 */
 	static float slab(Vector3f o, Vector3f d, Vector3f min, Vector3f max) {
 		float tmin = 0, tmax = Float.MAX_VALUE;
 		for (int a = 0; a < 3; a++) {

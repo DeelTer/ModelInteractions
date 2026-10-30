@@ -1,21 +1,25 @@
 package dev.deelter.modelinteractions.mixin;
 
-import java.util.UUID;
-
-import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
-
 import dev.deelter.modelinteractions.vanilla.MiRenderState;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
+
+import java.util.UUID;
 
 @Mixin(EntityRenderState.class)
 public abstract class EntityRenderStateMixin implements MiRenderState {
-	@Unique private int mi$id = -1;
-	@Unique private UUID mi$uuid;
-	@Unique private boolean mi$player;
-	@Unique private final double[] mi$cam = new double[3];
-	@Unique private Model<?> mi$main;
+	@Unique
+	private final double[] mi$cam = new double[3];
+	@Unique
+	private int mi$id = -1;
+	@Unique
+	private UUID mi$uuid;
+	@Unique
+	private boolean mi$player;
+	@Unique
+	private Model<?> mi$main;
 
 	@Override
 	public int mi$entityId() {

@@ -1,10 +1,9 @@
 package dev.deelter.modelinteractions.physics;
 
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
-
 import lombok.Getter;
 import lombok.Setter;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /**
  * Damped angular spring. State is a rotation vector (axis * angle) expressed in the
@@ -18,24 +17,42 @@ public class SpringJoint {
 	private static final float SLEEP_EPS = 1e-4f;
 	private static final float RELEASE_GLIDE = 1.5f;
 
-	@Getter private final Vector3f offset = new Vector3f();
-	@Getter private final Vector3f velocity = new Vector3f();
-	@Getter private final Vector3f target = new Vector3f();
-	@Getter private final Vector3f pinned = new Vector3f();
+	@Getter
+	private final Vector3f offset = new Vector3f();
+	@Getter
+	private final Vector3f velocity = new Vector3f();
+	@Getter
+	private final Vector3f target = new Vector3f();
+	@Getter
+	private final Vector3f pinned = new Vector3f();
 	private final Vector3f force = new Vector3f();
 	private final Vector3f tmp = new Vector3f();
 
-	@Getter @Setter private PhysicsProfile profile;
-	@Getter @Setter private float lengthPx;
-	/** When held the joint follows the target much more stiffly. */
-	@Getter @Setter private boolean held;
-	/** 0..1: after release, glide back slower and with more damping for a moment. */
-	@Getter @Setter private float returnSmoothing;
+	@Getter
+	@Setter
+	private PhysicsProfile profile;
+	@Getter
+	@Setter
+	private float lengthPx;
+	/**
+	 * When held the joint follows the target much more stiffly.
+	 */
+	@Getter
+	@Setter
+	private boolean held;
+	/**
+	 * 0..1: after release, glide back slower and with more damping for a moment.
+	 */
+	@Getter
+	@Setter
+	private float returnSmoothing;
 	/**
 	 * 0..1, how readily the joint gives in to a hand: 1 for light parts, less for heavy ones.
 	 * Lower means it follows the hand slower and settles back heavier, without bouncing.
 	 */
-	@Getter @Setter private float compliance = 1f;
+	@Getter
+	@Setter
+	private float compliance = 1f;
 	private boolean wasHeld;
 	private float releaseTimer;
 
@@ -44,12 +61,36 @@ public class SpringJoint {
 		this.lengthPx = lengthPx;
 	}
 
-	/** Adds an angular acceleration (rad/s^2) for the next step. */
+	public static Vector3f clamp(Vector3f v, float max) {
+		float l = v.length();
+		if (l > max && l > 0) v.mul(max / l);
+		return v;
+	}
+
+	/**
+	 * Rotation vector (axis * angle) of the shortest rotation taking {@code from} to {@code to}.
+	 */
+	public static Vector3f rotationBetween(Vector3f from, Vector3f to, Vector3f dest) {
+		float lf = from.length(), lt = to.length();
+		if (lf < 1e-6f || lt < 1e-6f) return dest.zero();
+		from.cross(to, dest);
+		float s = dest.length();
+		float c = from.dot(to);
+		float angle = (float) Math.atan2(s, c);
+		if (s < 1e-6f) return dest.zero();
+		return dest.mul(angle / s);
+	}
+
+	/**
+	 * Adds an angular acceleration (rad/s^2) for the next step.
+	 */
 	public void addAcceleration(Vector3f acc) {
 		force.add(acc);
 	}
 
-	/** Adds an instantaneous angular velocity change (rad/s). */
+	/**
+	 * Adds an instantaneous angular velocity change (rad/s).
+	 */
 	public void addImpulse(Vector3f dv) {
 		velocity.add(dv);
 	}
@@ -128,12 +169,16 @@ public class SpringJoint {
 		releaseTimer = 0;
 	}
 
-	/** Starts the gentle glide back, as after letting go (e.g. a saved pose was dropped). */
+	/**
+	 * Starts the gentle glide back, as after letting go (e.g. a saved pose was dropped).
+	 */
 	public void glide() {
 		releaseTimer = RELEASE_GLIDE;
 	}
 
-	/** Pins the current shape so the joint keeps it after release. */
+	/**
+	 * Pins the current shape so the joint keeps it after release.
+	 */
 	public void pinCurrent() {
 		pinned.set(offset);
 		target.zero();
@@ -143,23 +188,5 @@ public class SpringJoint {
 		float a = offset.length();
 		if (a < 1e-6f) return dest.identity();
 		return dest.fromAxisAngleRad(offset.x / a, offset.y / a, offset.z / a, a);
-	}
-
-	public static Vector3f clamp(Vector3f v, float max) {
-		float l = v.length();
-		if (l > max && l > 0) v.mul(max / l);
-		return v;
-	}
-
-	/** Rotation vector (axis * angle) of the shortest rotation taking {@code from} to {@code to}. */
-	public static Vector3f rotationBetween(Vector3f from, Vector3f to, Vector3f dest) {
-		float lf = from.length(), lt = to.length();
-		if (lf < 1e-6f || lt < 1e-6f) return dest.zero();
-		from.cross(to, dest);
-		float s = dest.length();
-		float c = from.dot(to);
-		float angle = (float) Math.atan2(s, c);
-		if (s < 1e-6f) return dest.zero();
-		return dest.mul(angle / s);
 	}
 }

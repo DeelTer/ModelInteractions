@@ -1,16 +1,8 @@
 package dev.deelter.modelinteractions.wire;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Wire format shared by the mod and the Paper plugin. Plain Java only, so the plugin can
@@ -33,7 +25,7 @@ import java.util.UUID;
  * LOOK  c2s: active u8, target uuid, pos 3*f64            turn someone's head towards pos
  *       s2c: sender uuid, then the same
  * </pre>
- *
+ * <p>
  * Bodies of states are parsed and re-encoded by the server, so a client only ever receives
  * well formed, size-bounded data.
  */
@@ -42,57 +34,59 @@ public final class Wire {
 	public static final String CHANNEL = "modelinteractions:main";
 
 	public static final int K_ACT = 1, K_STATE = 2, K_REQ = 3, K_HELLO = 4, K_CARRY = 5, K_LOOK = 6;
-	/** TETHER (s2c): held on the ground; walk towards pos, can't walk away from it. */
+	/**
+	 * TETHER (s2c): held on the ground; walk towards pos, can't walk away from it.
+	 */
 	public static final int CARRY_START = 0, CARRY_MOVE = 1, CARRY_THROW = 2, CARRY_DROP = 3, CARRY_TETHER = 4, CARRY_COUNT = 5;
 	public static final int HELLO_CARRY = 2;
-	/** The server is for adults and allows external devices driven by touches (each player still opts in). */
+	/**
+	 * The server is for adults and allows external devices driven by touches (each player still opts in).
+	 */
 	public static final int HELLO_ADULT = 4;
-	/** Permission flag bits the server reads (same as the mod's InteractionKind bits). */
+	/**
+	 * Permission flag bits the server reads (same as the mod's InteractionKind bits).
+	 */
 	public static final int FLAG_CARRY = 1 << 12, FLAG_LOOK = 1 << 13, FLAG_DRAG = 1 << 14;
-	/** World coordinates beyond the world border are nonsense. */
+	/**
+	 * World coordinates beyond the world border are nonsense.
+	 */
 	public static final double MAX_WORLD = 3.0e7;
-	/** Blocks per tick; nothing is thrown faster than this. */
+	/**
+	 * Blocks per tick; nothing is thrown faster than this.
+	 */
 	public static final float MAX_THROW = 4f;
 	public static final int CARRY_C2S_SIZE = 2 + 1 + 16 + 24 + 12 + 1, LOOK_C2S_SIZE = 2 + 1 + 16 + 24;
 	public static final int OP_GRAB = 0, OP_MOVE = 1, OP_RELEASE = 2, OP_PET = 3, OP_HUG = 4, OP_RESET = 5,
-			/** A hit: bone = part hit, anchor = contact point, point = velocity, both in the target's model space; keep = a VR slap. */
-			OP_PUSH = 6, OP_COUNT = 7;
+	/**
+	 * A hit: bone = part hit, anchor = contact point, point = velocity, both in the target's model space; keep = a VR slap.
+	 */
+	OP_PUSH = 6, OP_COUNT = 7;
 	public static final int S_PERM = 0, S_POSE = 1, S_TYPES = 2, S_COUNT = 3;
 	public static final int HELLO_MOBS = 1;
 
-	/** Hands: 0 mouse, 1 and 2 VR main/off hand. */
+	/**
+	 * Hands: 0 mouse, 1 and 2 VR main/off hand.
+	 */
 	public static final int MAX_HAND = 2;
-	/** Bone that stands for the whole torso / body turning. */
+	/**
+	 * Bone that stands for the whole torso / body turning.
+	 */
 	public static final int BODY_BONE = -1;
-	/** Model points are in blocks; no model is bigger than this. */
+	/**
+	 * Model points are in blocks; no model is bigger than this.
+	 */
 	public static final float MAX_COORD = 16f;
 	public static final int ACT_C2S_SIZE = 2 + 1 + 16 + 4 + 1 + 1 + 12 + 12;
 	public static final int ACT_S2C_SIZE = ACT_C2S_SIZE + 16;
 	public static final int MAX_STATE_BODY = 4096;
 	public static final int MAX_NAMES = 64, MAX_NAME_LEN = 16, MAX_POSE = 256, MAX_TYPES = 512, MAX_KEY_LEN = 64;
-	/** Pose angles are milliradians; a rotation vector longer than this is nonsense. */
+	/**
+	 * Pose angles are milliradians; a rotation vector longer than this is nonsense.
+	 */
 	public static final int MAX_POSE_MRAD = 4000;
 	public static final int FLAG_KEEP = 1;
 
-	private Wire() {}
-
-	public static final class BadMessage extends IOException {
-		public BadMessage(String msg) {
-			super(msg);
-		}
-	}
-
-	// ------------------------------------------------------------------ actions
-
-	public record Act(int op, UUID target, int bone, int hand, boolean keep, float[] anchor, float[] point) {
-		public Act {
-			anchor = anchor == null ? new float[3] : anchor;
-			point = point == null ? new float[3] : point;
-		}
-
-		public static Act simple(int op, UUID target) {
-			return new Act(op, target, 0, 0, false, null, null);
-		}
+	private Wire() {
 	}
 
 	public static byte[] encodeAct(Act a, UUID sender) {
@@ -114,7 +108,11 @@ public final class Wire {
 		return bo.toByteArray();
 	}
 
-	/** Reads the body of an ACT after the header (and sender, if any) and validates every field. */
+	// ------------------------------------------------------------------ actions
+
+	/**
+	 * Reads the body of an ACT after the header (and sender, if any) and validates every field.
+	 */
 	public static Act readAct(DataInputStream in) throws IOException {
 		int op = in.readUnsignedByte();
 		if (op >= OP_COUNT) throw new BadMessage("op");
@@ -136,11 +134,6 @@ public final class Wire {
 		}
 		return v;
 	}
-
-	// ------------------------------------------------------------------ carry / look
-
-	/** {@code hands}: how many of the sender's hands hold it (after a let-go: how many still do). */
-	public record Carry(int sub, UUID target, double x, double y, double z, float vx, float vy, float vz, int hands) {}
 
 	public static byte[] encodeCarry(Carry c, UUID from) {
 		return write(out -> {
@@ -170,7 +163,7 @@ public final class Wire {
 		return new Carry(sub, target, x, y, z, vx, vy, vz, hands);
 	}
 
-	public record Look(boolean active, UUID target, double x, double y, double z) {}
+	// ------------------------------------------------------------------ carry / look
 
 	public static byte[] encodeLook(Look l, UUID from) {
 		return write(out -> {
@@ -204,8 +197,6 @@ public final class Wire {
 		return f;
 	}
 
-	// ------------------------------------------------------------------ states
-
 	public static byte[] encodeState(int state, UUID owner, byte[] body) {
 		if (body.length > MAX_STATE_BODY) throw new IllegalArgumentException("state too big");
 		ByteArrayOutputStream bo = new ByteArrayOutputStream(body.length + 24);
@@ -230,7 +221,9 @@ public final class Wire {
 		return body;
 	}
 
-	/** Parses a state body and writes it again; throws on anything malformed or out of bounds. */
+	/**
+	 * Parses a state body and writes it again; throws on anything malformed or out of bounds.
+	 */
 	public static byte[] canonicalState(int state, byte[] body) throws IOException {
 		return switch (state) {
 			case S_PERM -> encodePerm(decodePerm(body));
@@ -240,11 +233,6 @@ public final class Wire {
 		};
 	}
 
-	// permissions --------------------------------------------------------
-
-	/** mode: 0 everyone, 1 whitelist, 2 nobody. Names lower case. */
-	public record Perm(int mode, int flags, List<String> whitelist, List<String> blacklist) {}
-
 	public static byte[] encodePerm(Perm p) {
 		return write(out -> {
 			out.writeByte(p.mode());
@@ -253,6 +241,8 @@ public final class Wire {
 			writeNames(out, p.blacklist());
 		});
 	}
+
+	// ------------------------------------------------------------------ states
 
 	public static Perm decodePerm(byte[] body) throws IOException {
 		DataInputStream in = in(body);
@@ -278,9 +268,11 @@ public final class Wire {
 		return out;
 	}
 
-	// pose ---------------------------------------------------------------
+	// permissions --------------------------------------------------------
 
-	/** bone id -> rotation vector in milliradians. */
+	/**
+	 * bone id -> rotation vector in milliradians.
+	 */
 	public static byte[] encodePose(Map<Integer, int[]> pose) {
 		return write(out -> {
 			int n = Math.min(pose.size(), MAX_POSE);
@@ -316,11 +308,6 @@ public final class Wire {
 		return Math.max(-MAX_POSE_MRAD, Math.min(MAX_POSE_MRAD, v));
 	}
 
-	// part types ---------------------------------------------------------
-
-	/** Types the owner picked for their own model: bone id -> part type ordinal. */
-	public record Types(String modelKey, Map<Integer, Integer> types) {}
-
 	public static byte[] encodeTypes(Types t) {
 		return write(out -> {
 			writeString(out, t.modelKey(), MAX_KEY_LEN);
@@ -351,7 +338,7 @@ public final class Wire {
 		return new Types(key, out);
 	}
 
-	// ------------------------------------------------------------------ small messages
+	// pose ---------------------------------------------------------------
 
 	public static byte[] encodeReq(UUID target) {
 		return write(out -> {
@@ -361,9 +348,11 @@ public final class Wire {
 		});
 	}
 
-	/** The client's hello: just the header. */
+	/**
+	 * The client's hello: just the header.
+	 */
 	public static byte[] encodeClientHello() {
-		return new byte[] { (byte) VERSION, (byte) K_HELLO };
+		return new byte[]{(byte) VERSION, (byte) K_HELLO};
 	}
 
 	public static byte[] encodeHello(int range, int flags) {
@@ -375,7 +364,11 @@ public final class Wire {
 		});
 	}
 
-	/** Header check: returns the kind, or -1 for another version or an empty message. */
+	// part types ---------------------------------------------------------
+
+	/**
+	 * Header check: returns the kind, or -1 for another version or an empty message.
+	 */
 	public static int kind(DataInputStream in) throws IOException {
 		if (in.available() < 2) return -1;
 		int v = in.readUnsignedByte();
@@ -383,16 +376,18 @@ public final class Wire {
 		return v == VERSION ? k : -1;
 	}
 
-	// ------------------------------------------------------------------ helpers
-
 	public static DataInputStream in(byte[] data) {
 		return new DataInputStream(new ByteArrayInputStream(data));
 	}
 
-	/** Trailing bytes mean a message we don't understand. */
+	/**
+	 * Trailing bytes mean a message we don't understand.
+	 */
 	public static void end(DataInputStream in) throws IOException {
 		if (in.available() != 0) throw new BadMessage("trailing bytes");
 	}
+
+	// ------------------------------------------------------------------ small messages
 
 	public static void writeUuid(DataOutputStream out, UUID u) throws IOException {
 		out.writeLong(u.getMostSignificantBits());
@@ -423,9 +418,7 @@ public final class Wire {
 		return s;
 	}
 
-	private interface Body {
-		void write(DataOutputStream out) throws IOException;
-	}
+	// ------------------------------------------------------------------ helpers
 
 	private static byte[] write(Body b) {
 		ByteArrayOutputStream bo = new ByteArrayOutputStream(64);
@@ -435,5 +428,47 @@ public final class Wire {
 			throw new IllegalStateException(e);
 		}
 		return bo.toByteArray();
+	}
+
+	private interface Body {
+		void write(DataOutputStream out) throws IOException;
+	}
+
+	public static final class BadMessage extends IOException {
+		public BadMessage(String msg) {
+			super(msg);
+		}
+	}
+
+	public record Act(int op, UUID target, int bone, int hand, boolean keep, float[] anchor, float[] point) {
+		public Act {
+			anchor = anchor == null ? new float[3] : anchor;
+			point = point == null ? new float[3] : point;
+		}
+
+		public static Act simple(int op, UUID target) {
+			return new Act(op, target, 0, 0, false, null, null);
+		}
+	}
+
+	/**
+	 * {@code hands}: how many of the sender's hands hold it (after a let-go: how many still do).
+	 */
+	public record Carry(int sub, UUID target, double x, double y, double z, float vx, float vy, float vz, int hands) {
+	}
+
+	public record Look(boolean active, UUID target, double x, double y, double z) {
+	}
+
+	/**
+	 * mode: 0 everyone, 1 whitelist, 2 nobody. Names lower case.
+	 */
+	public record Perm(int mode, int flags, List<String> whitelist, List<String> blacklist) {
+	}
+
+	/**
+	 * Types the owner picked for their own model: bone id -> part type ordinal.
+	 */
+	public record Types(String modelKey, Map<Integer, Integer> types) {
 	}
 }

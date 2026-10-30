@@ -1,8 +1,5 @@
 package dev.deelter.modelinteractions.debug;
 
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-
 import dev.deelter.modelinteractions.interaction.InteractionManager;
 import dev.deelter.modelinteractions.interaction.PlayerRig;
 import dev.deelter.modelinteractions.model.Bone;
@@ -12,6 +9,8 @@ import lombok.Setter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.particles.DustParticleOptions;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 /**
  * Debug view: outlines every interactive bone with dust particles colored by part type,
@@ -19,10 +18,13 @@ import net.minecraft.core.particles.DustParticleOptions;
  * model, grabbing will miss too.
  */
 public final class PartVisualizer {
-	@Getter @Setter private static boolean enabled;
+	@Getter
+	@Setter
+	private static boolean enabled;
 	private static int ticks;
 
-	private PartVisualizer() {}
+	private PartVisualizer() {
+	}
 
 	public static int color(PartType t) {
 		return switch (t) {

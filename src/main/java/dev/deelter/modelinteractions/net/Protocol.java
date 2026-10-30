@@ -1,25 +1,21 @@
 package dev.deelter.modelinteractions.net;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
-
-import org.joml.Vector3f;
-
 import dev.deelter.modelinteractions.config.PermissionMode;
 import dev.deelter.modelinteractions.interaction.PermissionState;
 import dev.deelter.modelinteractions.physics.PartType;
 import dev.deelter.modelinteractions.wire.Wire;
+import org.joml.Vector3f;
+
+import java.io.IOException;
+import java.util.*;
 
 /**
  * Conversions between the shared {@link Wire} format and the mod's own types. Only intents
  * and sparse target points are sent; every client runs the physics itself.
  */
 public final class Protocol {
-	private Protocol() {}
+	private Protocol() {
+	}
 
 	public static Wire.Act grab(UUID target, int bone, int hand, Vector3f anchor, Vector3f point) {
 		return new Wire.Act(Wire.OP_GRAB, target, bone, hand, false, arr(anchor), arr(point));
@@ -42,7 +38,7 @@ public final class Protocol {
 	}
 
 	public static float[] arr(Vector3f v) {
-		return new float[] { clamp(v.x), clamp(v.y), clamp(v.z) };
+		return new float[]{clamp(v.x), clamp(v.y), clamp(v.z)};
 	}
 
 	private static float clamp(float f) {
@@ -67,8 +63,6 @@ public final class Protocol {
 
 	// ---- owner-picked part types ----
 
-	public record OwnerTypes(String modelKey, Map<Integer, PartType> types) {}
-
 	public static byte[] types(String modelKey, Map<Integer, PartType> types) {
 		Map<Integer, Integer> m = new LinkedHashMap<>();
 		types.forEach((id, t) -> m.put(id, t.ordinal()));
@@ -84,18 +78,21 @@ public final class Protocol {
 		return new OwnerTypes(t.modelKey(), out);
 	}
 
-	// ---- saved pose ----
-
 	public static byte[] pose(Map<Integer, Vector3f> pinned) {
 		Map<Integer, int[]> m = new LinkedHashMap<>();
 		// milliradians are plenty for a resting pose
-		pinned.forEach((id, v) -> m.put(id, new int[] { Math.round(v.x * 1000f), Math.round(v.y * 1000f), Math.round(v.z * 1000f) }));
+		pinned.forEach((id, v) -> m.put(id, new int[]{Math.round(v.x * 1000f), Math.round(v.y * 1000f), Math.round(v.z * 1000f)}));
 		return Wire.encodePose(m);
 	}
+
+	// ---- saved pose ----
 
 	public static Map<Integer, Vector3f> readPose(byte[] body) throws IOException {
 		Map<Integer, Vector3f> out = new HashMap<>();
 		Wire.decodePose(body).forEach((id, v) -> out.put(id, new Vector3f(v[0], v[1], v[2]).div(1000f)));
 		return out;
+	}
+
+	public record OwnerTypes(String modelKey, Map<Integer, PartType> types) {
 	}
 }

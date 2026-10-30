@@ -1,13 +1,5 @@
 package dev.deelter.modelinteractions.cpm;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
-
 import com.tom.cpl.math.Rotation;
 import com.tom.cpl.math.Vec3f;
 import com.tom.cpm.shared.animation.AnimationEngine.AnimationMode;
@@ -15,12 +7,7 @@ import com.tom.cpm.shared.animation.AnimationState;
 import com.tom.cpm.shared.config.Player;
 import com.tom.cpm.shared.definition.ModelDefinition;
 import com.tom.cpm.shared.definition.ModelDefinition.ModelLoadingState;
-import com.tom.cpm.shared.model.Cube;
-import com.tom.cpm.shared.model.PartValues;
-import com.tom.cpm.shared.model.PlayerModelParts;
-import com.tom.cpm.shared.model.RenderedCube;
-import com.tom.cpm.shared.model.RootModelElement;
-
+import com.tom.cpm.shared.model.*;
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.config.MiConfig;
 import dev.deelter.modelinteractions.interaction.InteractionManager;
@@ -31,13 +18,23 @@ import dev.deelter.modelinteractions.model.Bone;
 import dev.deelter.modelinteractions.model.PartClassifier;
 import dev.deelter.modelinteractions.physics.PartType;
 import dev.deelter.modelinteractions.physics.SpringJoint;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
-/** Bridges CPM's render pipeline and the interaction rigs. Render thread only. */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Bridges CPM's render pipeline and the interaction rigs. Render thread only.
+ */
 public final class CpmHooks {
 	private static final Quaternionf Q = new Quaternionf(), Q2 = new Quaternionf();
 	private static final Vector3f V = new Vector3f();
 
-	private CpmHooks() {}
+	private CpmHooks() {
+	}
 
 	public static void onPoseReady(ModelDefinition def, Player<?> player, AnimationState state) {
 		if (!MiConfig.get().isEnabled()) return;
@@ -135,7 +132,9 @@ public final class CpmHooks {
 		}
 	}
 
-	/** Records model-space rest frames of all bones for this frame. Bones are parent-first. */
+	/**
+	 * Records model-space rest frames of all bones for this frame. Bones are parent-first.
+	 */
 	private static void capture(PlayerRig rig, ModelDefinition def) {
 		for (Bone b : rig.bones()) {
 			RenderedCube c = def.getElementById(b.getId());
@@ -158,19 +157,24 @@ public final class CpmHooks {
 		rig.updateDeformed();
 	}
 
-	/** Sets the bone's local rest transform and derives its model frame from the parent's. */
+	/**
+	 * Sets the bone's local rest transform and derives its model frame from the parent's.
+	 */
 	static void setRest(Bone b, Vec3f p, Rotation r, Vec3f s) {
 		Matrix4f local = b.localRest().identity()
 				.translate(p.x / 16f, p.y / 16f, p.z / 16f)
 				.rotateZYX(r.z, r.y, r.x);
-		if (s != null && (s.x != 1 || s.y != 1 || s.z != 1)) local.scale(Math.max(s.x, 0.01f), Math.max(s.y, 0.01f), Math.max(s.z, 0.01f));
+		if (s != null && (s.x != 1 || s.y != 1 || s.z != 1))
+			local.scale(Math.max(s.x, 0.01f), Math.max(s.y, 0.01f), Math.max(s.z, 0.01f));
 		if (b.getParent() == null) b.parentModel().identity();
 		else b.parentModel().set(b.getParent().model());
 		b.parentModel().mul(local, b.model());
 		b.deformed().set(b.model());
 	}
 
-	/** Writes spring offsets into the CPM elements as extra rotation, and the torso turn into the roots. */
+	/**
+	 * Writes spring offsets into the CPM elements as extra rotation, and the torso turn into the roots.
+	 */
 	private static void apply(PlayerRig rig, ModelDefinition def) {
 		Matrix4f body = rig.bodyTransform(new Matrix4f());
 		boolean turned = (body.properties() & Matrix4f.PROPERTY_IDENTITY) == 0;

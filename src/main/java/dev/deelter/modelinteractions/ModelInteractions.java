@@ -7,5 +7,6 @@ public final class ModelInteractions {
 	public static final String MOD_ID = "modelinteractions";
 	public static final Logger LOG = LoggerFactory.getLogger("ModelInteractions");
 
-	private ModelInteractions() {}
+	private ModelInteractions() {
+	}
 }

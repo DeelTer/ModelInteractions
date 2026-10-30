@@ -1,8 +1,5 @@
 package dev.deelter.modelinteractions.net;
 
-import java.io.DataInputStream;
-import java.util.UUID;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.interaction.CarryClient;
 import dev.deelter.modelinteractions.interaction.InteractionManager;
@@ -15,44 +12,36 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
+import java.io.DataInputStream;
+import java.util.UUID;
+
 /**
  * Transport over our own plugin channel, relayed by the Model Interactions Paper plugin.
  * Active only after the server said hello, so on other servers nothing is sent on it.
  */
 public final class RelayNet implements NetBridge {
 	public static final RelayNet INSTANCE = new RelayNet();
-
-	/** Raw {@link Wire} bytes; a Paper plugin gets and sends exactly these. */
-	public record Payload(byte[] data) implements CustomPacketPayload {
-		public static final Type<Payload> TYPE = new Type<>(Identifier.parse(Wire.CHANNEL));
-		public static final StreamCodec<RegistryFriendlyByteBuf, Payload> CODEC = StreamCodec.of(
-				(buf, p) -> buf.writeBytes(p.data),
-				buf -> {
-					int n = buf.readableBytes();
-					if (n > Wire.MAX_STATE_BODY + 64) throw new IllegalArgumentException("message too big");
-					byte[] d = new byte[n];
-					buf.readBytes(d);
-					return new Payload(d);
-				});
-
-		@Override
-		public Type<Payload> type() {
-			return TYPE;
-		}
-	}
-
-	@Getter private static boolean active;
-	@Getter private static int range;
-	@Getter private static boolean mobsAllowed;
-	/** The server lets us lift and throw mobs. */
-	@Getter private static boolean carryAllowed;
-	/** The server declared itself adults-only and allows external devices. */
-	@Getter private static boolean adultAllowed;
-
-	private RelayNet() {}
-
-	private static int helloTicks, hellos;
 	private static final int HELLO_INTERVAL = 40, HELLO_TRIES = 15;
+	@Getter
+	private static boolean active;
+	@Getter
+	private static int range;
+	@Getter
+	private static boolean mobsAllowed;
+	/**
+	 * The server lets us lift and throw mobs.
+	 */
+	@Getter
+	private static boolean carryAllowed;
+	/**
+	 * The server declared itself adults-only and allows external devices.
+	 */
+	@Getter
+	private static boolean adultAllowed;
+	private static int helloTicks, hellos;
+
+	private RelayNet() {
+	}
 
 	/**
 	 * Every client tick until the server answered: say hello. A hello sent from the server
@@ -124,7 +113,9 @@ public final class RelayNet implements NetBridge {
 		return true;
 	}
 
-	/** An already encoded message; dropped when no relay is there. */
+	/**
+	 * An already encoded message; dropped when no relay is there.
+	 */
 	public boolean sendRaw(byte[] data) {
 		return send(data);
 	}
@@ -147,5 +138,26 @@ public final class RelayNet implements NetBridge {
 	@Override
 	public boolean isAvailable() {
 		return active;
+	}
+
+	/**
+	 * Raw {@link Wire} bytes; a Paper plugin gets and sends exactly these.
+	 */
+	public record Payload(byte[] data) implements CustomPacketPayload {
+		public static final Type<Payload> TYPE = new Type<>(Identifier.parse(Wire.CHANNEL));
+		public static final StreamCodec<RegistryFriendlyByteBuf, Payload> CODEC = StreamCodec.of(
+				(buf, p) -> buf.writeBytes(p.data),
+				buf -> {
+					int n = buf.readableBytes();
+					if (n > Wire.MAX_STATE_BODY + 64) throw new IllegalArgumentException("message too big");
+					byte[] d = new byte[n];
+					buf.readBytes(d);
+					return new Payload(d);
+				});
+
+		@Override
+		public Type<Payload> type() {
+			return TYPE;
+		}
 	}
 }

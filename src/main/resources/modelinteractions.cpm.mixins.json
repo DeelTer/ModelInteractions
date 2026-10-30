@@ -1,14 +1,14 @@
 {
-  "required": true,
-  "minVersion": "0.8",
-  "package": "dev.deelter.modelinteractions.mixin.cpm",
-  "plugin": "dev.deelter.modelinteractions.mixin.cpm.CpmMixinPlugin",
-  "compatibilityLevel": "JAVA_25",
-  "client": [
-    "ModelDefinitionAccessor",
-    "RedirectHolderMixin"
-  ],
-  "injectors": {
-    "defaultRequire": 1
-  }
+	"required": true,
+	"minVersion": "0.8",
+	"package": "dev.deelter.modelinteractions.mixin.cpm",
+	"plugin": "dev.deelter.modelinteractions.mixin.cpm.CpmMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"ModelDefinitionAccessor",
+		"RedirectHolderMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
 }

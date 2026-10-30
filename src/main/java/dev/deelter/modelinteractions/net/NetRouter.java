@@ -1,9 +1,9 @@
 package dev.deelter.modelinteractions.net;
 
-import java.util.UUID;
-
 import dev.deelter.modelinteractions.wire.Wire;
 import lombok.Setter;
+
+import java.util.UUID;
 
 /**
  * Picks the transport: the server plugin's own channel when the server announced it,
@@ -11,14 +11,15 @@ import lombok.Setter;
  */
 public final class NetRouter implements NetBridge {
 	private static final NetRouter INSTANCE = new NetRouter();
+	@Setter
+	private NetBridge cpm = NetBridge.NONE;
+
+	private NetRouter() {
+	}
 
 	public static NetRouter get() {
 		return INSTANCE;
 	}
-
-	@Setter private NetBridge cpm = NetBridge.NONE;
-
-	private NetRouter() {}
 
 	private NetBridge active() {
 		if (RelayNet.isActive()) return RelayNet.INSTANCE;

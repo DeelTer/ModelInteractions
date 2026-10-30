@@ -2,14 +2,14 @@ package dev.deelter.modelinteractions;
 
 import dev.deelter.modelinteractions.config.ConfigListeners;
 import dev.deelter.modelinteractions.config.MiConfig;
-import dev.deelter.modelinteractions.input.PcInput;
-import dev.deelter.modelinteractions.interaction.CarryClient;
-import dev.deelter.modelinteractions.net.NetRouter;
-import dev.deelter.modelinteractions.net.RelayNet;
-import dev.deelter.modelinteractions.interaction.InteractionManager;
 import dev.deelter.modelinteractions.debug.DebugCommands;
 import dev.deelter.modelinteractions.debug.DummyManager;
 import dev.deelter.modelinteractions.debug.PartVisualizer;
+import dev.deelter.modelinteractions.input.PcInput;
+import dev.deelter.modelinteractions.interaction.CarryClient;
+import dev.deelter.modelinteractions.interaction.InteractionManager;
+import dev.deelter.modelinteractions.net.NetRouter;
+import dev.deelter.modelinteractions.net.RelayNet;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -20,6 +20,20 @@ public class ModelInteractionsClient implements ClientModInitializer {
 	private static Runnable vrFrame = () -> {};
 	private static long lastFrame;
 	private int publishRetry;
+
+	/**
+	 * Called at the start of every rendered frame.
+	 */
+	public static void onFrame(Minecraft mc, float partialTick) {
+		if (mc.player == null) return;
+		PcInput.frame(mc, partialTick);
+		vrFrame.run();
+		CarryClient.frameCarry(mc);
+		long now = System.nanoTime();
+		CarryClient.frame(mc, lastFrame == 0 ? 0 : Math.min((now - lastFrame) / 1e9f, 0.1f));
+		lastFrame = now;
+		InteractionManager.get().onFrame(mc, partialTick);
+	}
 
 	@Override
 	public void onInitializeClient() {
@@ -63,17 +77,5 @@ public class ModelInteractionsClient implements ClientModInitializer {
 			// the CPM handshake / server hello come a bit after join; retry until a transport accepts
 			if (!mgr.isPermissionsPublished() && publishRetry++ % 40 == 0) mgr.publishOwnPermissions();
 		});
-	}
-
-	/** Called at the start of every rendered frame. */
-	public static void onFrame(Minecraft mc, float partialTick) {
-		if (mc.player == null) return;
-		PcInput.frame(mc, partialTick);
-		vrFrame.run();
-		CarryClient.frameCarry(mc);
-		long now = System.nanoTime();
-		CarryClient.frame(mc, lastFrame == 0 ? 0 : Math.min((now - lastFrame) / 1e9f, 0.1f));
-		lastFrame = now;
-		InteractionManager.get().onFrame(mc, partialTick);
 	}
 }

@@ -1,19 +1,9 @@
 package dev.deelter.modelinteractions.input;
 
-import java.util.UUID;
-import java.util.function.Predicate;
-
-import org.joml.Vector3f;
-
 import com.mojang.blaze3d.platform.InputConstants;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.config.MiConfig;
-import dev.deelter.modelinteractions.interaction.Grab;
-import dev.deelter.modelinteractions.interaction.HitTester;
-import dev.deelter.modelinteractions.interaction.InteractionManager;
-import dev.deelter.modelinteractions.interaction.PartHit;
-import dev.deelter.modelinteractions.interaction.PlayerRig;
+import dev.deelter.modelinteractions.interaction.*;
 import dev.deelter.modelinteractions.model.Bone;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
@@ -29,6 +19,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
+
+import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Mouse and keyboard. Hold right mouse (the use key) on a part and move the camera to pull
@@ -37,15 +31,19 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class PcInput {
 	public static final int HAND = 0;
-
+	private static final float AIM_MAX_YAW = 45f, AIM_MAX_PITCH = 35f;
 	private static KeyMapping grab, pet, hug, reset, pinSelf, freeMode, keep;
 	private static boolean grabWasDown, shiftWasDown;
 	private static long shiftDownAt;
 	private static boolean shiftTapValid;
-	/** The current grab / pet was started with the use key and lasts while it is held. */
+	/**
+	 * The current grab / pet was started with the use key and lasts while it is held.
+	 */
 	private static boolean useGrabbing, usePetting;
 	private static float holdDistance;
-	/** Where the wheel wants the held point; {@link #holdDistance} follows it as fast as the weight lets it. */
+	/**
+	 * Where the wheel wants the held point; {@link #holdDistance} follows it as fast as the weight lets it.
+	 */
 	private static float holdTarget;
 	/**
 	 * While holding with the mouse the camera turns slower than the mouse, so your view doesn't
@@ -54,9 +52,14 @@ public final class PcInput {
 	 */
 	private static float aimYaw, aimPitch;
 	private static boolean aiming;
-	private static final float AIM_MAX_YAW = 45f, AIM_MAX_PITCH = 35f;
+	private static UUID hintedRig;
+	private static long hintAt;
+	private static int hintsShown;
+	private static long lastKeepToggle;
+	private static long lastFrameNanos;
 
-	private PcInput() {}
+	private PcInput() {
+	}
 
 	public static void register() {
 		KeyMapping.Category cat = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ModelInteractions.MOD_ID, "main"));
@@ -94,7 +97,9 @@ public final class PcInput {
 		return started && !aimsAtGrabbed(mc);
 	}
 
-	/** The vanilla crosshair is on the very entity we just took hold of. */
+	/**
+	 * The vanilla crosshair is on the very entity we just took hold of.
+	 */
 	private static boolean aimsAtGrabbed(Minecraft mc) {
 		if (!(mc.hitResult instanceof net.minecraft.world.phys.EntityHitResult eh)) return false;
 		Grab g = InteractionManager.get().localGrab(HAND);
@@ -112,7 +117,8 @@ public final class PcInput {
 			return true;
 		}
 		PartHit hit = pick(mc, 1f, b -> true);
-		if (hit == null || !useKeyMayGrab(mc, hit) || mgr.localGrab(HAND) != null || mgr.startLocalGrab(HAND, hit) == null) return false;
+		if (hit == null || !useKeyMayGrab(mc, hit) || mgr.localGrab(HAND) != null || mgr.startLocalGrab(HAND, hit) == null)
+			return false;
 		holdDistance = holdTarget = hit.distance();
 		useGrabbing = true;
 		return true;
@@ -128,7 +134,9 @@ public final class PcInput {
 		return !vanillaHandUseWins(mc, InteractionManager.entityOf(mc.level, hit.rig()));
 	}
 
-	/** Trading, riding, sitting your own pet, handing items: these keep the hand. */
+	/**
+	 * Trading, riding, sitting your own pet, handing items: these keep the hand.
+	 */
 	public static boolean vanillaHandUseWins(Minecraft mc, Entity e) {
 		if (e == null || e instanceof Player) return false;
 		if (e instanceof Npc || e instanceof AbstractHorse || e instanceof InventoryCarrier) return true;
@@ -155,7 +163,9 @@ public final class PcInput {
 		return mc.hitResult != null && mc.hitResult.getType() == HitResult.Type.BLOCK;
 	}
 
-	/** Holding attack while the crosshair passes a model on its way to a block: don't dig that block. */
+	/**
+	 * Holding attack while the crosshair passes a model on its way to a block: don't dig that block.
+	 */
 	public static boolean modelInFrontOfBlock(Minecraft mc) {
 		if (!MiConfig.get().isEnabled() || mc.player == null || !mc.player.getMainHandItem().isEmpty()) return false;
 		if (mc.hitResult == null || mc.hitResult.getType() != HitResult.Type.BLOCK) return false;
@@ -177,7 +187,8 @@ public final class PcInput {
 			shiftDownAt = nowMs;
 			shiftTapValid = mgr.localGrab(HAND) != null;
 		}
-		if (!shift && shiftWasDown && shiftTapValid && nowMs - shiftDownAt <= 300 && mgr.localGrab(HAND) != null) toggleKeep(mc);
+		if (!shift && shiftWasDown && shiftTapValid && nowMs - shiftDownAt <= 300 && mgr.localGrab(HAND) != null)
+			toggleKeep(mc);
 		if (mgr.localGrab(HAND) == null) shiftTapValid = false;
 		shiftWasDown = shift;
 		if (usePetting) {
@@ -225,21 +236,19 @@ public final class PcInput {
 		}
 	}
 
-	private static UUID hintedRig;
-	private static long hintAt;
-	private static int hintsShown;
-
 	/**
 	 * The first few times the crosshair lands on a model with an empty hand, say what the
 	 * mouse does there. Nothing else on screen tells that a model can be grabbed.
 	 */
 	private static void hint(Minecraft mc, InteractionManager mgr) {
-		if (!MiConfig.get().isHints() || hintsShown >= 5 || mgr.localGrab(HAND) != null || MiConfig.get().isDebugOverlay()) return;
+		if (!MiConfig.get().isHints() || hintsShown >= 5 || mgr.localGrab(HAND) != null || MiConfig.get().isDebugOverlay())
+			return;
 		if (!mc.player.getMainHandItem().isEmpty() || mc.gui.screen() != null) return;
 		PartHit hit = pick(mc, 1f);
 		UUID rig = hit == null ? null : hit.rig().getUuid();
 		long now = System.currentTimeMillis();
-		if (rig == null || rig.equals(hintedRig) || now - hintAt < 10_000 || !mgr.canGrab(hit) || !useKeyMayGrab(mc, hit)) return;
+		if (rig == null || rig.equals(hintedRig) || now - hintAt < 10_000 || !mgr.canGrab(hit) || !useKeyMayGrab(mc, hit))
+			return;
 		hintedRig = rig;
 		hintAt = now;
 		hintsShown++;
@@ -265,9 +274,9 @@ public final class PcInput {
 		return m.localGrab(1) != null || m.localGrab(2) != null;
 	}
 
-	private static long lastKeepToggle;
-
-	/** Flips "keep this shape when I let go" on everything we hold. */
+	/**
+	 * Flips "keep this shape when I let go" on everything we hold.
+	 */
 	public static void toggleKeep(Minecraft mc) {
 		// one button press can reach us twice in VR (the grab module and the vanilla key)
 		long now = System.nanoTime();
@@ -295,9 +304,9 @@ public final class PcInput {
 		return p.isFreeMode();
 	}
 
-	private static long lastFrameNanos;
-
-	/** Camera share of a mouse turn while holding: light parts 80%, heavy bodies 45%. */
+	/**
+	 * Camera share of a mouse turn while holding: light parts 80%, heavy bodies 45%.
+	 */
 	private static double cameraShare() {
 		Grab g = InteractionManager.get().localGrab(HAND);
 		return g == null ? 1 : 0.45 + 0.35 * InteractionManager.get().complianceOf(g);
@@ -319,7 +328,9 @@ public final class PcInput {
 		return delta * share;
 	}
 
-	/** Per-frame: drag the held point with the camera. */
+	/**
+	 * Per-frame: drag the held point with the camera.
+	 */
 	public static void frame(Minecraft mc, float partial) {
 		InteractionManager mgr = InteractionManager.get();
 		Grab g = mgr.localGrab(HAND);
@@ -370,7 +381,8 @@ public final class PcInput {
 		float near = (reach + 6) * (reach + 6);
 		for (PlayerRig rig : InteractionManager.get().rigs()) {
 			if (firstPerson && rig.getUuid().equals(self)) continue;
-			if (!rig.isWorldValid() || rig.getBaseModelToWorld().getTranslation(new Vector3f()).distanceSquared(o) > near) continue;
+			if (!rig.isWorldValid() || rig.getBaseModelToWorld().getTranslation(new Vector3f()).distanceSquared(o) > near)
+				continue;
 			PartHit h = HitTester.raycast(rig, o, d, reach, filter);
 			if (h != null && (best == null || h.distance() < best.distance())) best = h;
 		}

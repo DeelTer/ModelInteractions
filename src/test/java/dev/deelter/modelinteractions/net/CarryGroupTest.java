@@ -1,14 +1,11 @@
 package dev.deelter.modelinteractions.net;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import dev.deelter.modelinteractions.wire.CarryGroup;
+import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import org.junit.jupiter.api.Test;
-
-import dev.deelter.modelinteractions.wire.CarryGroup;
+import static org.junit.jupiter.api.Assertions.*;
 
 class CarryGroupTest {
 	private static final UUID A = UUID.randomUUID(), B = UUID.randomUUID(), C = UUID.randomUUID();

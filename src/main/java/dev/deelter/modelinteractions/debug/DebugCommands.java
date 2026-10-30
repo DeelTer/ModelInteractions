@@ -1,27 +1,26 @@
 package dev.deelter.modelinteractions.debug;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
-
-import java.util.Locale;
-
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
-
 import dev.deelter.modelinteractions.ModelInteractions;
-import dev.deelter.modelinteractions.interaction.InteractionManager;
-import dev.deelter.modelinteractions.interaction.PlayerRig;
+import dev.deelter.modelinteractions.config.MiConfig;
 import dev.deelter.modelinteractions.input.PcInput;
+import dev.deelter.modelinteractions.interaction.InteractionManager;
 import dev.deelter.modelinteractions.interaction.PartHit;
+import dev.deelter.modelinteractions.interaction.PlayerRig;
 import dev.deelter.modelinteractions.model.Bone;
 import dev.deelter.modelinteractions.physics.PartType;
 import dev.deelter.modelinteractions.toy.ToyBridge;
-import dev.deelter.modelinteractions.config.MiConfig;
-import net.minecraft.client.Minecraft;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+
+import java.util.Locale;
+
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 /**
  * Client commands:
@@ -40,7 +39,8 @@ import net.minecraft.network.chat.Component;
  * </pre>
  */
 public final class DebugCommands {
-	private DebugCommands() {}
+	private DebugCommands() {
+	}
 
 	public static void register() {
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, ctx) -> {
@@ -160,7 +160,9 @@ public final class DebugCommands {
 		return 1;
 	}
 
-	/** Marks or unmarks the part of your own model under the crosshair as a zone (F5 to see yourself). */
+	/**
+	 * Marks or unmarks the part of your own model under the crosshair as a zone (F5 to see yourself).
+	 */
 	private static int toyZone(CommandContext<FabricClientCommandSource> c) {
 		Minecraft mc = Minecraft.getInstance();
 		PartHit hit = mc.player == null ? null : PcInput.pick(mc, 1f, b -> !b.isRoot());

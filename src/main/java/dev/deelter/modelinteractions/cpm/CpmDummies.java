@@ -1,21 +1,23 @@
 package dev.deelter.modelinteractions.cpm;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.UUID;
-
 import com.mojang.authlib.GameProfile;
 import com.tom.cpm.shared.MinecraftClientAccess;
 import com.tom.cpm.shared.config.ConfigKeys;
 import com.tom.cpm.shared.config.ModConfig;
 import com.tom.cpm.shared.definition.ModelDefinitionLoader;
 import com.tom.cpm.shared.io.ModelFile;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 
-/** Puts a CPM model on a test dummy. Only loaded when CPM is installed. */
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.UUID;
+
+/**
+ * Puts a CPM model on a test dummy. Only loaded when CPM is installed.
+ */
 public final class CpmDummies {
-	private CpmDummies() {}
+	private CpmDummies() {
+	}
 
 	@SuppressWarnings("unchecked")
 	public static void wear(GameProfile profile, String name, InputStream in) throws IOException {

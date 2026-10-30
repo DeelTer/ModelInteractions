@@ -1,9 +1,8 @@
 package dev.deelter.modelinteractions.model;
 
+import dev.deelter.modelinteractions.physics.PartType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-
-import dev.deelter.modelinteractions.physics.PartType;
 
 /**
  * Guesses what an element is from its geometry, because exported CPM models carry no
@@ -11,7 +10,8 @@ import dev.deelter.modelinteractions.physics.PartType;
  * head box x[-4,4] y[-8,0] z[-4,4]; body box x[-4,4] y[0,12] z[-2,2]. The player faces -Z.
  */
 public final class PartClassifier {
-	private PartClassifier() {}
+	private PartClassifier() {
+	}
 
 	public static PartType classify(Bone bone, Matrix4f rootToBone) {
 		if (bone.isRoot()) {

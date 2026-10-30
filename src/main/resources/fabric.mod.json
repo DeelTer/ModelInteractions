@@ -1,38 +1,38 @@
 {
-  "schemaVersion": 1,
-  "id": "modelinteractions",
-  "version": "${version}",
-  "name": "Model Interactions",
-  "description": "Physical interactions with player and mob models: grab, pull, turn, push, pet and hug ears, tails, hair, limbs and torsos. Works with Customizable Player Models, PC and Vivecraft VR, synced through CPM or the Model Interactions server plugin.",
-  "authors": [
-    "DeelTer"
-  ],
-  "license": "MIT",
-  "environment": "client",
-  "entrypoints": {
-    "client": [
-      "dev.deelter.modelinteractions.ModelInteractionsClient"
-    ],
-    "cpmapi": [
-      "dev.deelter.modelinteractions.cpm.CpmPlugin"
-    ],
-    "modmenu": [
-      "dev.deelter.modelinteractions.config.ModMenuEntry"
-    ]
-  },
-  "mixins": [
-    "modelinteractions.mixins.json",
-    "modelinteractions.cpm.mixins.json"
-  ],
-  "depends": {
-    "fabricloader": ">=0.19.0",
-    "fabric-api": "*",
-    "minecraft": "${minecraft_range}"
-  },
-  "suggests": {
-    "cpm": "*",
-    "vivecraft": "*",
-    "modmenu": "*",
-    "cloth-config": "*"
-  }
+	"schemaVersion": 1,
+	"id": "modelinteractions",
+	"version": "${version}",
+	"name": "Model Interactions",
+	"description": "Physical interactions with player and mob models: grab, pull, turn, push, pet and hug ears, tails, hair, limbs and torsos. Works with Customizable Player Models, PC and Vivecraft VR, synced through CPM or the Model Interactions server plugin.",
+	"authors": [
+		"DeelTer"
+	],
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"dev.deelter.modelinteractions.ModelInteractionsClient"
+		],
+		"cpmapi": [
+			"dev.deelter.modelinteractions.cpm.CpmPlugin"
+		],
+		"modmenu": [
+			"dev.deelter.modelinteractions.config.ModMenuEntry"
+		]
+	},
+	"mixins": [
+		"modelinteractions.mixins.json",
+		"modelinteractions.cpm.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.0",
+		"fabric-api": "*",
+		"minecraft": "${minecraft_range}"
+	},
+	"suggests": {
+		"cpm": "*",
+		"vivecraft": "*",
+		"modmenu": "*",
+		"cloth-config": "*"
+	}
 }

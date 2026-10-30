@@ -1,13 +1,7 @@
 package dev.deelter.modelinteractions.plugin;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
+import dev.deelter.modelinteractions.wire.CarryGroup;
+import dev.deelter.modelinteractions.wire.Wire;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
@@ -20,8 +14,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.util.Vector;
 
-import dev.deelter.modelinteractions.wire.CarryGroup;
-import dev.deelter.modelinteractions.wire.Wire;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Lifting and throwing, alone or together. Every player holding something reports their hands;
@@ -33,60 +27,56 @@ import dev.deelter.modelinteractions.wire.Wire;
 final class Carrying implements Listener {
 	private static final double MAX_STEER = 0.8, MAX_HOLDER_DISTANCE_SQ = 36;
 	private static final long SOFT_LANDING_MS = 6000;
-	/** Hands "needed" for something that may never be lifted from the ground. */
+	/**
+	 * Hands "needed" for something that may never be lifted from the ground.
+	 */
 	private static final int NEVER = 99;
-
-	record Rules(boolean mobs, boolean dragMobs, double maxWidth, double maxHeight, double groupMaxWidth, double groupMaxHeight,
-			double holdDistance, double maxThrow, long throwCooldownMs, boolean noFallDamage, Set<String> deny) {
-		static Rules read(ConfigurationSection c) {
-			double w = Math.max(0.1, c.getDouble("max-width", 1.0)), h = Math.max(0.1, c.getDouble("max-height", 1.6));
-			return new Rules(c.getBoolean("mobs", true), c.getBoolean("drag-mobs", true), w, h,
-					Math.max(w, c.getDouble("group-max-width", 1.6)),
-					Math.max(h, c.getDouble("group-max-height", 2.0)),
-					Math.max(0.5, Math.min(6, c.getDouble("hold-distance", 2.5))),
-					Math.max(0, Math.min(Wire.MAX_THROW, c.getDouble("max-throw-speed", 1.6))),
-					Math.max(0, c.getLong("throw-cooldown-ms", 1000)),
-					c.getBoolean("no-fall-damage", true),
-					c.getStringList("deny").stream().map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet()));
-		}
-
-		double soloVolume() {
-			return maxWidth * maxWidth * maxHeight;
-		}
-	}
-
-	private static final class Held {
-		final Entity entity;
-		final CarryGroup group;
-		boolean hadGravity, hadFlight;
-
-		/** May be lifted at all, or only pulled along on the ground. */
-		final boolean canLift, canDrag;
-		boolean wasCollidable = true, collisionOff;
-
-		Held(Entity entity, int required, boolean canDrag) {
-			this.entity = entity;
-			// only dragged: never off the ground (no number of hands is enough), but a player held by
-			// the hand who falls is caught, since in the air one hand holds
-			this.group = new CarryGroup(required > 0 ? required : NEVER);
-			this.canLift = required > 0;
-			this.canDrag = canDrag;
-		}
-	}
-
+	/**
+	 * Slack of a hand on the ground, blocks: just enough to soak up ping. Beyond it the held one is pulled along.
+	 */
+	private static final double SLACK = 0.15;
 	private final InteractionsPlugin plugin;
-	private Rules rules;
-	/** held (or being taken hold of) entity -> its group */
+	/**
+	 * held (or being taken hold of) entity -> its group
+	 */
 	private final Map<UUID, Held> held = new HashMap<>();
-	/** thrown or dropped entity -> until when falls don't hurt it */
+	/**
+	 * thrown or dropped entity -> until when falls don't hurt it
+	 */
 	private final Map<UUID, Long> softLanding = new HashMap<>();
-	/** players whose flight we allowed while held, until when to take it back */
+	/**
+	 * players whose flight we allowed while held, until when to take it back
+	 */
 	private final Map<UUID, Long> restoreFlight = new HashMap<>();
 	private final Map<UUID, Long> lastThrow = new HashMap<>();
+	private Rules rules;
 
 	Carrying(InteractionsPlugin plugin, Rules rules) {
 		this.plugin = plugin;
 		this.rules = rules;
+	}
+
+	/**
+	 * Standing on something solid. Asked of the world, not of the (client-reported) player flag.
+	 */
+	private static boolean grounded(Entity e) {
+		var below = e.getLocation().subtract(0, 0.08, 0).getBlock();
+		return below.getType().isSolid() || !(e instanceof Player) && e.isOnGround();
+	}
+
+	/**
+	 * While held, it and its holders don't push each other apart.
+	 */
+	private static void setCollision(Held h, boolean on) {
+		if (!(h.entity instanceof LivingEntity le)) return;
+		if (!on && !h.collisionOff) {
+			h.wasCollidable = le.isCollidable();
+			le.setCollidable(false);
+			h.collisionOff = true;
+		} else if (on && h.collisionOff) {
+			le.setCollidable(h.wasCollidable);
+			h.collisionOff = false;
+		}
 	}
 
 	void setRules(Rules rules) {
@@ -97,7 +87,9 @@ final class Carrying implements Listener {
 		return rules.mobs() && p.hasPermission("modelinteractions.carry");
 	}
 
-	/** One CARRY message from {@code sender}, already parsed; {@code t} exists and is in reach. */
+	/**
+	 * One CARRY message from {@code sender}, already parsed; {@code t} exists and is in reach.
+	 */
 	void onCarry(Player sender, Wire.Carry c, Entity t, Session targetSession) {
 		long now = System.currentTimeMillis();
 		UUID who = sender.getUniqueId();
@@ -149,9 +141,12 @@ final class Carrying implements Listener {
 		return goal;
 	}
 
-	/** Hands needed to lift {@code t}, or 0 when {@code sender} may not take hold of it at all. */
+	/**
+	 * Hands needed to lift {@code t}, or 0 when {@code sender} may not take hold of it at all.
+	 */
 	private int mayCarry(Player sender, Entity t, Session targetSession) {
-		if (!(t instanceof LivingEntity) || t == sender || t.isInsideVehicle() || !t.getPassengers().isEmpty()) return 0;
+		if (!(t instanceof LivingEntity) || t == sender || t.isInsideVehicle() || !t.getPassengers().isEmpty())
+			return 0;
 		double vol = t.getWidth() * t.getWidth() * t.getHeight();
 		if (t instanceof Player) {
 			// the target said yes (published, server-side flags) to this sender
@@ -169,33 +164,41 @@ final class Carrying implements Listener {
 		return CarryGroup.handsNeeded(vol, rules.soloVolume());
 	}
 
-	/** Pulled along on the ground by a hand: players who allow it, mobs by the server's rules. */
+	/**
+	 * Pulled along on the ground by a hand: players who allow it, mobs by the server's rules.
+	 */
 	private boolean mayDrag(Player sender, Entity t, Session targetSession) {
 		if (!(t instanceof LivingEntity) || t == sender || t.isInsideVehicle()) return false;
 		if (t instanceof Player) {
 			return targetSession != null && targetSession.perm != null
 					&& (targetSession.perm.flags() & Wire.FLAG_DRAG) != 0 && targetSession.allowsActor(sender.getName());
 		}
-		if (!rules.dragMobs() || !mobsAllowedFor(sender) || rules.deny().contains(t.getType().getKey().getKey())) return false;
+		if (!rules.dragMobs() || !mobsAllowedFor(sender) || rules.deny().contains(t.getType().getKey().getKey()))
+			return false;
 		if (t.getWidth() > 3 || t.getHeight() > 4) return false;
 		return !(t instanceof Tameable tm && tm.isTamed() && tm.getOwnerUniqueId() != null && !tm.getOwnerUniqueId().equals(sender.getUniqueId()));
 	}
 
-	/** 1 for small things, down to 0.3 for the biggest a group may lift. */
+	/**
+	 * 1 for small things, down to 0.3 for the biggest a group may lift.
+	 */
 	private double massFactor(Entity t) {
 		double vol = t.getWidth() * t.getWidth() * t.getHeight();
 		double maxVol = rules.groupMaxWidth() * rules.groupMaxWidth() * rules.groupMaxHeight();
 		return Math.max(0.3, 1 - 0.7 * Math.min(1, vol / maxVol));
 	}
 
-	/** Every tick: drop holders that left, lift / steer / let fall, restore flight. */
+	/**
+	 * Every tick: drop holders that left, lift / steer / let fall, restore flight.
+	 */
 	void tick() {
 		long now = System.currentTimeMillis();
 		Iterator<Held> it = held.values().iterator();
 		while (it.hasNext()) {
 			Held h = it.next();
 			if (!h.entity.isValid()) {
-				if (h.group.isLifted() && h.entity instanceof Player p && !h.hadFlight) restoreFlight.put(p.getUniqueId(), now);
+				if (h.group.isLifted() && h.entity instanceof Player p && !h.hadFlight)
+					restoreFlight.put(p.getUniqueId(), now);
 				it.remove();
 				continue;
 			}
@@ -238,13 +241,9 @@ final class Carrying implements Listener {
 		lastThrow.values().removeIf(t -> now - t > 60_000);
 	}
 
-	/** Standing on something solid. Asked of the world, not of the (client-reported) player flag. */
-	private static boolean grounded(Entity e) {
-		var below = e.getLocation().subtract(0, 0.08, 0).getBlock();
-		return below.getType().isSolid() || !(e instanceof Player) && e.isOnGround();
-	}
-
-	/** Everyone around learns that it is held up, so their clients let it swing from the grip. */
+	/**
+	 * Everyone around learns that it is held up, so their clients let it swing from the grip.
+	 */
 	private void announce(Held h, int sub) {
 		Location at = h.entity.getLocation();
 		UUID carrier = h.group.anyone();
@@ -280,23 +279,9 @@ final class Carrying implements Listener {
 		h.entity.setFallDistance(0);
 	}
 
-	/** While held, it and its holders don't push each other apart. */
-	private static void setCollision(Held h, boolean on) {
-		if (!(h.entity instanceof LivingEntity le)) return;
-		if (!on && !h.collisionOff) {
-			h.wasCollidable = le.isCollidable();
-			le.setCollidable(false);
-			h.collisionOff = true;
-		} else if (on && h.collisionOff) {
-			le.setCollidable(h.wasCollidable);
-			h.collisionOff = false;
-		}
-	}
-
-	/** Slack of a hand on the ground, blocks: just enough to soak up ping. Beyond it the held one is pulled along. */
-	private static final double SLACK = 0.15;
-
-	/** On the ground and held: pulled towards the hands, the way a hand pulls an arm. */
+	/**
+	 * On the ground and held: pulled towards the hands, the way a hand pulls an arm.
+	 */
 	private void tether(Held h) {
 		double[] g = h.group.goal();
 		if (g == null) return;
@@ -327,10 +312,12 @@ final class Carrying implements Listener {
 		}
 	}
 
-	/** Players move themselves: tell them where the hands are, with the server's values. */
+	/**
+	 * Players move themselves: tell them where the hands are, with the server's values.
+	 */
 	private void tell(Player p, int sub, Held h, Vector v) {
 		double[] g = h.group.goal();
-		if (g == null) g = new double[] { p.getLocation().getX(), p.getLocation().getY(), p.getLocation().getZ() };
+		if (g == null) g = new double[]{p.getLocation().getX(), p.getLocation().getY(), p.getLocation().getZ()};
 		UUID carrier = h.group.anyone();
 		Wire.Carry out = new Wire.Carry(sub, p.getUniqueId(), g[0], g[1], g[2], (float) v.getX(), (float) v.getY(), (float) v.getZ(),
 				h.group.hands(System.currentTimeMillis()));
@@ -344,7 +331,9 @@ final class Carrying implements Listener {
 		if (until != null && System.currentTimeMillis() < until) e.setCancelled(true);
 	}
 
-	/** A player left or changed world: they let go of everything, and whatever held them lets go. */
+	/**
+	 * A player left or changed world: they let go of everything, and whatever held them lets go.
+	 */
 	void drop(UUID player) {
 		for (Held h : held.values()) h.group.leave(player);
 		Held self = held.get(player);
@@ -361,7 +350,9 @@ final class Carrying implements Listener {
 		}
 	}
 
-	/** Plugin disabled: put every mob's gravity back and take away flight we gave. */
+	/**
+	 * Plugin disabled: put every mob's gravity back and take away flight we gave.
+	 */
 	void releaseAll() {
 		for (Held h : held.values()) setCollision(h, true);
 		for (Held h : held.values()) {
@@ -376,8 +367,49 @@ final class Carrying implements Listener {
 		held.clear();
 		for (UUID u : restoreFlight.keySet()) {
 			Player p = plugin.getServer().getPlayer(u);
-			if (p != null && p.getGameMode() != GameMode.CREATIVE && p.getGameMode() != GameMode.SPECTATOR) p.setAllowFlight(false);
+			if (p != null && p.getGameMode() != GameMode.CREATIVE && p.getGameMode() != GameMode.SPECTATOR)
+				p.setAllowFlight(false);
 		}
 		restoreFlight.clear();
+	}
+
+	record Rules(boolean mobs, boolean dragMobs, double maxWidth, double maxHeight, double groupMaxWidth,
+	             double groupMaxHeight,
+	             double holdDistance, double maxThrow, long throwCooldownMs, boolean noFallDamage, Set<String> deny) {
+		static Rules read(ConfigurationSection c) {
+			double w = Math.max(0.1, c.getDouble("max-width", 1.0)), h = Math.max(0.1, c.getDouble("max-height", 1.6));
+			return new Rules(c.getBoolean("mobs", true), c.getBoolean("drag-mobs", true), w, h,
+					Math.max(w, c.getDouble("group-max-width", 1.6)),
+					Math.max(h, c.getDouble("group-max-height", 2.0)),
+					Math.max(0.5, Math.min(6, c.getDouble("hold-distance", 2.5))),
+					Math.max(0, Math.min(Wire.MAX_THROW, c.getDouble("max-throw-speed", 1.6))),
+					Math.max(0, c.getLong("throw-cooldown-ms", 1000)),
+					c.getBoolean("no-fall-damage", true),
+					c.getStringList("deny").stream().map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet()));
+		}
+
+		double soloVolume() {
+			return maxWidth * maxWidth * maxHeight;
+		}
+	}
+
+	private static final class Held {
+		final Entity entity;
+		final CarryGroup group;
+		/**
+		 * May be lifted at all, or only pulled along on the ground.
+		 */
+		final boolean canLift, canDrag;
+		boolean hadGravity, hadFlight;
+		boolean wasCollidable = true, collisionOff;
+
+		Held(Entity entity, int required, boolean canDrag) {
+			this.entity = entity;
+			// only dragged: never off the ground (no number of hands is enough), but a player held by
+			// the hand who falls is caught, since in the air one hand holds
+			this.group = new CarryGroup(required > 0 ? required : NEVER);
+			this.canLift = required > 0;
+			this.canDrag = canDrag;
+		}
 	}
 }

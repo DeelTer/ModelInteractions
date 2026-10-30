@@ -1,16 +1,19 @@
 package dev.deelter.modelinteractions.config;
 
-import java.util.ArrayList;
-
 import me.shedaniel.clothconfig2.api.ConfigBuilder;
 import me.shedaniel.clothconfig2.api.ConfigCategory;
 import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** Optional Cloth Config screen; the JSON file works without it. */
+import java.util.ArrayList;
+
+/**
+ * Optional Cloth Config screen; the JSON file works without it.
+ */
 public final class ClothConfigScreen {
-	private ClothConfigScreen() {}
+	private ClothConfigScreen() {
+	}
 
 	private static Component t(String key) {
 		return Component.translatable("modelinteractions.config." + key);

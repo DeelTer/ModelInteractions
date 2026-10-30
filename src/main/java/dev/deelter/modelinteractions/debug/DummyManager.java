@@ -1,20 +1,6 @@
 package dev.deelter.modelinteractions.debug;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.TreeSet;
-import java.util.UUID;
-import java.util.stream.Stream;
-
 import com.mojang.authlib.GameProfile;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.interaction.InteractionManager;
 import dev.deelter.modelinteractions.wire.Wire;
@@ -30,54 +16,37 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.stream.Stream;
+
 /**
  * Client-only fake players (optionally wearing a CPM model) and mobs, for testing
  * interactions without a second client. The server never hears of them and no interaction
  * with them is sent over the network.
  */
 public final class DummyManager {
-	/** FLOAT: hovers a little above the ground, so one hand can catch it and it hangs. */
-	public enum Motion { STILL, WALK, SPIN, JUMP, FLOAT }
-
-	/** CPM models shipped inside the mod jar; "steve" is the plain player model. */
+	/**
+	 * CPM models shipped inside the mod jar; "steve" is the plain player model.
+	 */
 	public static final List<String> BUILTIN = List.of("rana", "lucifer", "steve");
 	private static final int FIRST_ID = -0x4D490000;
 	private static final boolean CPM = FabricLoader.getInstance().isModLoaded("cpm");
-
 	private static final Map<UUID, Dummy> DUMMIES = new LinkedHashMap<>();
 	private static int nextId = FIRST_ID;
-
-	private DummyManager() {}
-
-	private static final class Dummy {
-		final LivingEntity entity;
-		final GameProfile profile;
-		final float baseYaw;
-		Motion motion = Motion.STILL;
-		float phase;
-		/** Lifted: hands' middle; thrown: velocity per tick until it lands. */
-		Vec3 carriedAt, flying;
-		int carryHands = 2;
-		boolean airborne;
-		Vec3 lookAt;
-		long lookNanos;
-		Vec3 center;
-
-		Dummy(LivingEntity entity, GameProfile profile, Vec3 center, float baseYaw) {
-			this.carriedAt = null;
-			this.center = center;
-			this.entity = entity;
-			this.profile = profile;
-			this.center = center;
-			this.baseYaw = baseYaw;
-		}
+	private DummyManager() {
 	}
 
 	public static Path userDir() {
 		return FabricLoader.getInstance().getConfigDir().resolve(ModelInteractions.MOD_ID).resolve("dummies");
 	}
 
-	/** Builtin names plus *.cpmmodel files from the config folder. */
+	/**
+	 * Builtin names plus *.cpmmodel files from the config folder.
+	 */
 	public static List<String> availableModels() {
 		TreeSet<String> names = new TreeSet<>(CPM ? BUILTIN : List.of("steve"));
 		Path dir = userDir();
@@ -92,11 +61,14 @@ public final class DummyManager {
 		return new ArrayList<>(names);
 	}
 
-	/** Living entity types that can be spawned as a test mob. */
+	/**
+	 * Living entity types that can be spawned as a test mob.
+	 */
 	public static List<String> mobTypes() {
 		List<String> out = new ArrayList<>();
 		for (EntityType<?> t : BuiltInRegistries.ENTITY_TYPE) {
-			if (t.canSummon() && t != net.minecraft.world.entity.EntityTypes.PLAYER) out.add(BuiltInRegistries.ENTITY_TYPE.getKey(t).getPath());
+			if (t.canSummon() && t != net.minecraft.world.entity.EntityTypes.PLAYER)
+				out.add(BuiltInRegistries.ENTITY_TYPE.getKey(t).getPath());
 		}
 		return out;
 	}
@@ -109,7 +81,9 @@ public final class DummyManager {
 		return in;
 	}
 
-	/** Spawns a fake player two blocks in front of the local player, facing them. */
+	/**
+	 * Spawns a fake player two blocks in front of the local player, facing them.
+	 */
 	public static LivingEntity spawn(String model, String name) throws IOException {
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel level = mc.level;
@@ -128,7 +102,9 @@ public final class DummyManager {
 		return place(new RemotePlayer(level, profile), profile);
 	}
 
-	/** Spawns a client-only mob of the given type, e.g. "fox". */
+	/**
+	 * Spawns a client-only mob of the given type, e.g. "fox".
+	 */
 	public static LivingEntity spawnMob(String type) throws IOException {
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel level = mc.level;
@@ -155,7 +131,9 @@ public final class DummyManager {
 		return e;
 	}
 
-	/** Lifting and throwing a dummy, all on this client. */
+	/**
+	 * Lifting and throwing a dummy, all on this client.
+	 */
 	public static void carry(Wire.Carry c) {
 		Dummy d = DUMMIES.get(c.target());
 		if (d == null) return;
@@ -200,7 +178,9 @@ public final class DummyManager {
 		return !DUMMIES.isEmpty();
 	}
 
-	/** "Pose me" for all dummies. */
+	/**
+	 * "Pose me" for all dummies.
+	 */
 	public static boolean setPoseMode(boolean on) {
 		DUMMIES.keySet().forEach(u -> InteractionManager.get().setDummyFree(u, on));
 		return !DUMMIES.isEmpty();
@@ -221,19 +201,24 @@ public final class DummyManager {
 		Dummy d = DUMMIES.remove(uuid);
 		if (d == null) return;
 		ClientLevel level = Minecraft.getInstance().level;
-		if (level != null && level.getEntity(d.entity.getId()) == d.entity) level.removeEntity(d.entity.getId(), Entity.RemovalReason.DISCARDED);
+		if (level != null && level.getEntity(d.entity.getId()) == d.entity)
+			level.removeEntity(d.entity.getId(), Entity.RemovalReason.DISCARDED);
 		InteractionManager.get().unregisterLocalDummy(uuid);
 		if (CPM && d.profile != null) dev.deelter.modelinteractions.cpm.CpmDummies.forget(d.profile);
 	}
 
-	/** Forgets dummies of a level that was unloaded. */
+	/**
+	 * Forgets dummies of a level that was unloaded.
+	 */
 	public static void reset() {
 		DUMMIES.keySet().forEach(InteractionManager.get()::unregisterLocalDummy);
 		DUMMIES.clear();
 		nextId = FIRST_ID;
 	}
 
-	/** On the ground (not jumping, held up or flying after a throw). */
+	/**
+	 * On the ground (not jumping, held up or flying after a throw).
+	 */
 	public static boolean isGrounded(UUID uuid) {
 		Dummy d = DUMMIES.get(uuid);
 		return d == null || !d.airborne;
@@ -243,7 +228,9 @@ public final class DummyManager {
 		return DUMMIES.containsKey(uuid);
 	}
 
-	/** Runs after entities ticked, so the entity's own old-position bookkeeping interpolates our moves. */
+	/**
+	 * Runs after entities ticked, so the entity's own old-position bookkeeping interpolates our moves.
+	 */
 	public static void tick(Minecraft mc) {
 		if (DUMMIES.isEmpty()) return;
 		DUMMIES.values().removeIf(d -> d.entity.isRemoved() || d.entity.level() != mc.level);
@@ -312,7 +299,9 @@ public final class DummyManager {
 		d.entity.setXRot((float) -Math.toDegrees(Math.atan2(v.y, Math.sqrt(v.x * v.x + v.z * v.z))));
 	}
 
-	/** Held: hang below the hands. Thrown: a simple ballistic arc until it is back at its old height. */
+	/**
+	 * Held: hang below the hands. Thrown: a simple ballistic arc until it is back at its old height.
+	 */
 	private static void carried(Minecraft mc, Dummy d) {
 		LivingEntity e = d.entity;
 		if (d.carriedAt != null) {
@@ -341,5 +330,36 @@ public final class DummyManager {
 
 	private static boolean standsOnSomething(Minecraft mc, LivingEntity e) {
 		return !mc.level.noCollision(e, e.getBoundingBox().move(0, -0.06, 0));
+	}
+
+	/**
+	 * FLOAT: hovers a little above the ground, so one hand can catch it and it hangs.
+	 */
+	public enum Motion {STILL, WALK, SPIN, JUMP, FLOAT}
+
+	private static final class Dummy {
+		final LivingEntity entity;
+		final GameProfile profile;
+		final float baseYaw;
+		Motion motion = Motion.STILL;
+		float phase;
+		/**
+		 * Lifted: hands' middle; thrown: velocity per tick until it lands.
+		 */
+		Vec3 carriedAt, flying;
+		int carryHands = 2;
+		boolean airborne;
+		Vec3 lookAt;
+		long lookNanos;
+		Vec3 center;
+
+		Dummy(LivingEntity entity, GameProfile profile, Vec3 center, float baseYaw) {
+			this.carriedAt = null;
+			this.center = center;
+			this.entity = entity;
+			this.profile = profile;
+			this.center = center;
+			this.baseYaw = baseYaw;
+		}
 	}
 }

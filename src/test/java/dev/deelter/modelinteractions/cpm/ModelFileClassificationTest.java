@@ -1,21 +1,5 @@
 package dev.deelter.modelinteractions.cpm;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-
 import com.tom.cpl.math.Rotation;
 import com.tom.cpl.math.Vec3f;
 import com.tom.cpm.shared.definition.ModelDefinitionLoader;
@@ -25,11 +9,21 @@ import com.tom.cpm.shared.model.Cube;
 import com.tom.cpm.shared.model.PlayerModelParts;
 import com.tom.cpm.shared.model.RenderedCube;
 import com.tom.cpm.shared.parts.ModelPartType;
-
 import dev.deelter.modelinteractions.model.BodyRegion;
 import dev.deelter.modelinteractions.model.Bone;
 import dev.deelter.modelinteractions.model.PartClassifier;
 import dev.deelter.modelinteractions.physics.PartType;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.*;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Parses the real test models with CPM's own readers and runs the classifier on them,
@@ -38,6 +32,66 @@ import dev.deelter.modelinteractions.physics.PartType;
 class ModelFileClassificationTest {
 	private static final float[][] ROOT_POS = {
 			{0, 0, 0}, {0, 0, 0}, {5, 2, 0}, {-5, 2, 0}, {1.9f, 12, 0}, {-1.9f, 12, 0}};
+
+	private static List<Cube> readCubes(String res) throws IOException {
+		try (InputStream in = ModelFileClassificationTest.class.getResourceAsStream(res)) {
+			ModelFile mf = ModelFile.load(in);
+			byte[] data = mf.getDataBlock();
+			IOHelper din = new IOHelper(data);
+			if (din.read() != ModelDefinitionLoader.HEADER) throw new IOException("bad header");
+			List<Cube> out = new ArrayList<>();
+			while (true) {
+				ModelPartType[] type = new ModelPartType[1];
+				Object r = din.readObjectBlock(ModelPartType.VALUES, (t, d) -> {
+					type[0] = t;
+					switch (t) {
+						case CUBES -> {
+							int n = d.readVarInt();
+							for (int i = 0; i < n; i++) {
+								Cube c = Cube.loadDefinitionCubeV2(d);
+								c.id = i + 10;
+								out.add(c);
+							}
+						}
+						case DEFINITION -> readV1(d, out);
+						case DEFINITION_LINK -> {
+							// linked definition stored next to the file (overflow block)
+							IOHelper link = new IOHelper(overflow(mf));
+							if (link.read() != ModelDefinitionLoader.HEADER) throw new IOException("bad link header");
+							readV1(link, out);
+						}
+						default -> {
+						}
+					}
+					return t;
+				});
+				if (r == null && type[0] == null) continue;
+				if (type[0] == ModelPartType.END) break;
+			}
+			return out;
+		}
+	}
+
+	// Old (V1) definitions have no other reader: CPM's own ModelPartDefinition uses this same deprecated method.
+	@SuppressWarnings("deprecation")
+	private static void readV1(IOHelper d, List<Cube> out) throws IOException {
+		int n = d.readVarInt();
+		for (int i = 0; i < n; i++) {
+			Cube c = Cube.loadDefinitionCube(d);
+			c.id = i + 10;
+			out.add(c);
+		}
+	}
+
+	private static byte[] overflow(ModelFile mf) throws IOException {
+		try {
+			var f = ModelFile.class.getDeclaredField("overflowLocal");
+			f.setAccessible(true);
+			return (byte[]) f.get(mf);
+		} catch (ReflectiveOperationException e) {
+			throw new IOException(e);
+		}
+	}
 
 	@ParameterizedTest
 	@ValueSource(strings = {"Rana", "LuciferHelltaker"})
@@ -95,66 +149,8 @@ class ModelFileClassificationTest {
 				assertTrue(tails >= 3, "Lucifer has a segmented tail");
 				assertTrue(counts.getOrDefault(PartType.HAIR, 0) >= 3, "Lucifer has long hair");
 			}
-			default -> {}
-		}
-	}
-
-	private static List<Cube> readCubes(String res) throws IOException {
-		try (InputStream in = ModelFileClassificationTest.class.getResourceAsStream(res)) {
-			ModelFile mf = ModelFile.load(in);
-			byte[] data = mf.getDataBlock();
-			IOHelper din = new IOHelper(data);
-			if (din.read() != ModelDefinitionLoader.HEADER) throw new IOException("bad header");
-			List<Cube> out = new ArrayList<>();
-			while (true) {
-				ModelPartType[] type = new ModelPartType[1];
-				Object r = din.readObjectBlock(ModelPartType.VALUES, (t, d) -> {
-					type[0] = t;
-					switch (t) {
-						case CUBES -> {
-							int n = d.readVarInt();
-							for (int i = 0; i < n; i++) {
-								Cube c = Cube.loadDefinitionCubeV2(d);
-								c.id = i + 10;
-								out.add(c);
-							}
-						}
-						case DEFINITION -> readV1(d, out);
-						case DEFINITION_LINK -> {
-							// linked definition stored next to the file (overflow block)
-							IOHelper link = new IOHelper(overflow(mf));
-							if (link.read() != ModelDefinitionLoader.HEADER) throw new IOException("bad link header");
-							readV1(link, out);
-						}
-						default -> {}
-					}
-					return t;
-				});
-				if (r == null && type[0] == null) continue;
-				if (type[0] == ModelPartType.END) break;
+			default -> {
 			}
-			return out;
-		}
-	}
-
-	// Old (V1) definitions have no other reader: CPM's own ModelPartDefinition uses this same deprecated method.
-	@SuppressWarnings("deprecation")
-	private static void readV1(IOHelper d, List<Cube> out) throws IOException {
-		int n = d.readVarInt();
-		for (int i = 0; i < n; i++) {
-			Cube c = Cube.loadDefinitionCube(d);
-			c.id = i + 10;
-			out.add(c);
-		}
-	}
-
-	private static byte[] overflow(ModelFile mf) throws IOException {
-		try {
-			var f = ModelFile.class.getDeclaredField("overflowLocal");
-			f.setAccessible(true);
-			return (byte[]) f.get(mf);
-		} catch (ReflectiveOperationException e) {
-			throw new IOException(e);
 		}
 	}
 }

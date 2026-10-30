@@ -1,17 +1,5 @@
 package dev.deelter.modelinteractions.interaction;
 
-import java.lang.ref.WeakReference;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
-
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
-
 import dev.deelter.modelinteractions.config.MiConfig;
 import dev.deelter.modelinteractions.model.Bone;
 import dev.deelter.modelinteractions.physics.PartType;
@@ -20,6 +8,12 @@ import dev.deelter.modelinteractions.physics.SpringJoint;
 import dev.deelter.modelinteractions.wire.Wire;
 import lombok.Getter;
 import lombok.Setter;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+
+import java.lang.ref.WeakReference;
+import java.util.*;
 
 /**
  * Interaction state of one entity (player or mob): the bone layout of the model it is drawn
@@ -28,63 +22,121 @@ import lombok.Setter;
  * Two backends fill it: a CPM model for players that wear one, or the vanilla entity model.
  */
 public class PlayerRig {
-	public enum Source { CPM, VANILLA }
-
-	/** The torso: turns everything about {@link #bodyPivot}. Slow, heavy, can go all the way round. */
+	/**
+	 * The torso: turns everything about {@link #bodyPivot}. Slow, heavy, can go all the way round.
+	 */
 	private static final PhysicsProfile BODY_PROFILE = new PhysicsProfile(3.2f, 0.75f, (float) Math.PI * 0.98f, 0f, true);
-
-	@Getter private final UUID uuid;
-	private WeakReference<Object> definition = new WeakReference<>(null);
-	@Getter private String modelKey = "";
-	@Getter private Source source = Source.VANILLA;
-	@Getter private long sourceSeenNanos;
-	@Getter @Setter private int entityId = -1;
+	@Getter
+	private final UUID uuid;
 	private final Map<Integer, Bone> bones = new LinkedHashMap<>();
 	private final Map<Integer, SpringJoint> joints = new HashMap<>();
-	@Getter private SpringJoint bodyJoint;
-	/** Model space point the torso turns about (hips for humanoids, middle for mobs). */
-	@Getter private final Vector3f bodyPivot = new Vector3f();
-	@Getter private float totalMass = 1;
-	/** The pivot actually used: glides between the feet (standing) and {@link #bodyPivot} (in the air). */
-	@Getter private final Vector3f pivot = new Vector3f();
-	/** Model-space point it hangs from while held by one point in the air, or null. */
-	@Setter private Vector3f hang;
-	private boolean pivotInit;
-	/** Middle of the torso, model space; where arms go for a hug. */
-	@Getter private final Vector3f bodyCenter = new Vector3f();
-	/** Last time someone touched this entity; mobs only get ambient physics for a while after. */
-	@Getter @Setter private long touchedNanos;
-	/** Idle sway and body-motion swing this frame (players always, mobs shortly after a touch). */
-	@Getter @Setter private boolean ambient;
-	/** World point the head of the model turns to (a VR player's head someone holds), or null. */
-	private net.minecraft.world.phys.Vec3 lookPoint;
-	private long lookNanos;
-
-	/** Model->world as captured from the last render, relative to the entity's position then. */
-	@Getter private final Matrix4f capturedRel = new Matrix4f();
-	@Getter @Setter private long capturedNanos;
-
-	/** Model space (blocks, model axes) -> world, without the torso turn. */
-	@Getter private final Matrix4f baseModelToWorld = new Matrix4f();
-	@Getter private final Matrix4f baseWorldToModel = new Matrix4f();
-	/** Including the torso turn: what the bones are drawn with. */
-	@Getter private final Matrix4f modelToWorld = new Matrix4f();
-	@Getter private final Matrix4f worldToModel = new Matrix4f();
-	@Getter @Setter private boolean worldValid;
-	@Getter @Setter private long lastSeenNanos;
-
+	/**
+	 * Model space point the torso turns about (hips for humanoids, middle for mobs).
+	 */
+	@Getter
+	private final Vector3f bodyPivot = new Vector3f();
+	/**
+	 * The pivot actually used: glides between the feet (standing) and {@link #bodyPivot} (in the air).
+	 */
+	@Getter
+	private final Vector3f pivot = new Vector3f();
+	/**
+	 * Middle of the torso, model space; where arms go for a hug.
+	 */
+	@Getter
+	private final Vector3f bodyCenter = new Vector3f();
+	/**
+	 * Model->world as captured from the last render, relative to the entity's position then.
+	 */
+	@Getter
+	private final Matrix4f capturedRel = new Matrix4f();
+	/**
+	 * Model space (blocks, model axes) -> world, without the torso turn.
+	 */
+	@Getter
+	private final Matrix4f baseModelToWorld = new Matrix4f();
+	@Getter
+	private final Matrix4f baseWorldToModel = new Matrix4f();
+	/**
+	 * Including the torso turn: what the bones are drawn with.
+	 */
+	@Getter
+	private final Matrix4f modelToWorld = new Matrix4f();
+	@Getter
+	private final Matrix4f worldToModel = new Matrix4f();
 	// body motion for inertia, model space
 	private final Vector3f prevWorldPos = new Vector3f(), prevWorldVel = new Vector3f(), accelModel = new Vector3f();
+	private WeakReference<Object> definition = new WeakReference<>(null);
+	@Getter
+	private String modelKey = "";
+	@Getter
+	private Source source = Source.VANILLA;
+	@Getter
+	private long sourceSeenNanos;
+	@Getter
+	@Setter
+	private int entityId = -1;
+	@Getter
+	private SpringJoint bodyJoint;
+	@Getter
+	private float totalMass = 1;
+	/**
+	 * Model-space point it hangs from while held by one point in the air, or null.
+	 */
+	@Setter
+	private Vector3f hang;
+	private boolean pivotInit;
+	/**
+	 * Last time someone touched this entity; mobs only get ambient physics for a while after.
+	 */
+	@Getter
+	@Setter
+	private long touchedNanos;
+	/**
+	 * Idle sway and body-motion swing this frame (players always, mobs shortly after a touch).
+	 */
+	@Getter
+	@Setter
+	private boolean ambient;
+	/**
+	 * World point the head of the model turns to (a VR player's head someone holds), or null.
+	 */
+	private net.minecraft.world.phys.Vec3 lookPoint;
+	private long lookNanos;
+	@Getter
+	@Setter
+	private long capturedNanos;
+	@Getter
+	@Setter
+	private boolean worldValid;
+	@Getter
+	@Setter
+	private long lastSeenNanos;
 	private float prevBodyYaw, yawVel, yawAccel;
 	private boolean hasMotionHistory;
-
 	// pet reaction
-	@Getter private float petTimer, wagTimer;
+	@Getter
+	private float petTimer, wagTimer;
 	private float wagPhase;
 	private float idleTime;
-
 	public PlayerRig(UUID uuid) {
 		this.uuid = uuid;
+	}
+
+	public static PhysicsProfile profileFor(PartType type) {
+		MiConfig c = MiConfig.get();
+		return type.defaultProfile().scaled(c.getPhysics().getStiffness(), c.getPhysics().getDamping());
+	}
+
+	public static boolean isSoft(PartType t) {
+		return t == PartType.EAR || t == PartType.TAIL || t == PartType.HAIR || t == PartType.WING || t == PartType.JELLY;
+	}
+
+	private static float wrapDeg(float d) {
+		d %= 360f;
+		if (d >= 180f) d -= 360f;
+		if (d < -180f) d += 360f;
+		return d;
 	}
 
 	public boolean isFor(Object def) {
@@ -96,7 +148,9 @@ public class PlayerRig {
 		sourceSeenNanos = System.nanoTime();
 	}
 
-	/** CPM drew this player within the last half second; the vanilla backend keeps out. */
+	/**
+	 * CPM drew this player within the last half second; the vanilla backend keeps out.
+	 */
 	public boolean cpmActive(long now) {
 		return source == Source.CPM && now - sourceSeenNanos < 500_000_000L;
 	}
@@ -121,7 +175,9 @@ public class PlayerRig {
 		if (keptBody != null) bodyJoint().getPinned().set(keptBody);
 	}
 
-	/** Call after bone boxes are known. */
+	/**
+	 * Call after bone boxes are known.
+	 */
 	public void computeMasses() {
 		for (Bone b : bones.values()) b.setSubtreeMass(b.getMass());
 		// bones are parent-first, so walking backwards adds children before their parents
@@ -129,7 +185,8 @@ public class PlayerRig {
 		float total = 0;
 		for (int i = arr.length - 1; i >= 0; i--) {
 			Bone b = arr[i];
-			if (b.getParent() != null) b.getParent().setSubtreeMass(b.getParent().getSubtreeMass() + b.getSubtreeMass());
+			if (b.getParent() != null)
+				b.getParent().setSubtreeMass(b.getParent().getSubtreeMass() + b.getSubtreeMass());
 			total += b.getMass();
 		}
 		totalMass = Math.max(total, 1);
@@ -147,7 +204,9 @@ public class PlayerRig {
 		return joints;
 	}
 
-	/** Joint for a bone, created on demand. Null when the bone can't move. {@link Wire#BODY_BONE} is the torso. */
+	/**
+	 * Joint for a bone, created on demand. Null when the bone can't move. {@link Wire#BODY_BONE} is the torso.
+	 */
 	public SpringJoint joint(int id) {
 		if (id == Wire.BODY_BONE) return bodyJoint();
 		SpringJoint j = joints.get(id);
@@ -164,11 +223,6 @@ public class PlayerRig {
 		return bodyJoint;
 	}
 
-	public static PhysicsProfile profileFor(PartType type) {
-		MiConfig c = MiConfig.get();
-		return type.defaultProfile().scaled(c.getPhysics().getStiffness(), c.getPhysics().getDamping());
-	}
-
 	public void refreshProfiles() {
 		joints.forEach((id, j) -> {
 			Bone b = bones.get(id);
@@ -176,7 +230,9 @@ public class PlayerRig {
 		});
 	}
 
-	/** Torso turn as a model-space matrix: T(pivot) R T(-pivot). */
+	/**
+	 * Torso turn as a model-space matrix: T(pivot) R T(-pivot).
+	 */
 	public Matrix4f bodyTransform(Matrix4f dest) {
 		dest.identity();
 		if (bodyJoint == null || bodyJoint.getOffset().lengthSquared() < 1e-8f) return dest;
@@ -199,7 +255,9 @@ public class PlayerRig {
 		pivot.lerp(want, Math.min(1f, dt * 6f));
 	}
 
-	/** Sets the base transform for this frame and derives the turned one. */
+	/**
+	 * Sets the base transform for this frame and derives the turned one.
+	 */
 	public void setBase(Matrix4f base) {
 		baseModelToWorld.set(base);
 		baseModelToWorld.invert(baseWorldToModel);
@@ -207,7 +265,9 @@ public class PlayerRig {
 		modelToWorld.invert(worldToModel);
 	}
 
-	/** Track body motion; called once per frame after {@link #setBase}. */
+	/**
+	 * Track body motion; called once per frame after {@link #setBase}.
+	 */
 	public void updateMotion(float dt, float bodyYawDeg) {
 		Vector3f pos = baseModelToWorld.getTranslation(new Vector3f());
 		if (!hasMotionHistory || dt <= 0) {
@@ -263,7 +323,8 @@ public class PlayerRig {
 			SpringJoint j = joints.get(b.getId());
 			if (!isSoft(t)) {
 				// rigid parts only sway while they hold a pose someone left on them
-				if (j != null && sway > 0 && !j.isHeld() && j.getPinned().lengthSquared() > 1e-6f) addSway(j, b.getId(), sway * 0.5f);
+				if (j != null && sway > 0 && !j.isHeld() && j.getPinned().lengthSquared() > 1e-6f)
+					addSway(j, b.getId(), sway * 0.5f);
 				if (j != null) j.setReturnSmoothing(smoothing);
 				continue;
 			}
@@ -325,7 +386,9 @@ public class PlayerRig {
 		}
 	}
 
-	/** Slow, per-bone desynchronised wobble so idle and posed parts look alive. */
+	/**
+	 * Slow, per-bone desynchronised wobble so idle and posed parts look alive.
+	 */
 	private void addSway(SpringJoint j, int id, float amp) {
 		float seed = (id * 0.618034f) % 1f * 6.2832f;
 		float t = idleTime;
@@ -339,7 +402,9 @@ public class PlayerRig {
 		lookNanos = System.nanoTime();
 	}
 
-	/** Turns the head bone towards {@link #lookPoint}; the model faces -Z. */
+	/**
+	 * Turns the head bone towards {@link #lookPoint}; the model faces -Z.
+	 */
 	private void aimHead() {
 		if (lookPoint == null) return;
 		if (System.nanoTime() - lookNanos > 500_000_000L) {
@@ -348,7 +413,8 @@ public class PlayerRig {
 		}
 		Vector3f pm = worldToModel.transformPosition(new Vector3f((float) lookPoint.x, (float) lookPoint.y, (float) lookPoint.z));
 		for (Bone b : bones.values()) {
-			if (b.getType() != PartType.HEAD || b.getParent() != null && b.getParent().getType() == PartType.HEAD) continue;
+			if (b.getType() != PartType.HEAD || b.getParent() != null && b.getParent().getType() == PartType.HEAD)
+				continue;
 			SpringJoint j = joint(b.getId());
 			if (j == null || j.isHeld()) return;
 			Matrix4f inv = b.parentModel().invert(new Matrix4f());
@@ -381,11 +447,9 @@ public class PlayerRig {
 		}
 	}
 
-	public static boolean isSoft(PartType t) {
-		return t == PartType.EAR || t == PartType.TAIL || t == PartType.HAIR || t == PartType.WING || t == PartType.JELLY;
-	}
-
-	/** Forces a rebuild (and reclassification) on the next render of this entity. */
+	/**
+	 * Forces a rebuild (and reclassification) on the next render of this entity.
+	 */
 	public void invalidate() {
 		definition = new WeakReference<>(null);
 	}
@@ -405,10 +469,5 @@ public class PlayerRig {
 		if (bodyJoint != null) bodyJoint.pinCurrent();
 	}
 
-	private static float wrapDeg(float d) {
-		d %= 360f;
-		if (d >= 180f) d -= 360f;
-		if (d < -180f) d += 360f;
-		return d;
-	}
+	public enum Source {CPM, VANILLA}
 }

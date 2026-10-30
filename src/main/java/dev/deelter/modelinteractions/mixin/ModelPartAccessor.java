@@ -1,12 +1,11 @@
 package dev.deelter.modelinteractions.mixin;
 
-import java.util.List;
-import java.util.Map;
-
+import net.minecraft.client.model.geom.ModelPart;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-import net.minecraft.client.model.geom.ModelPart;
+import java.util.List;
+import java.util.Map;
 
 @Mixin(ModelPart.class)
 public interface ModelPartAccessor {

@@ -1,6 +1,8 @@
 package dev.deelter.modelinteractions.model;
 
-/** Vanilla root part an element hangs from. */
+/**
+ * Vanilla root part an element hangs from.
+ */
 public enum BodyRegion {
 	HEAD, BODY, LEFT_ARM, RIGHT_ARM, LEFT_LEG, RIGHT_LEG, OTHER;
 

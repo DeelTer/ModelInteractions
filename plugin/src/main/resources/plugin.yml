@@ -9,7 +9,7 @@ commands:
     description: Model Interactions relay
     usage: /modelinteractions <reload|stats>
     permission: modelinteractions.admin
-    aliases: [mint]
+    aliases: [ mint ]
 permissions:
   modelinteractions.use:
     description: Interact with other players' models, seen by others

@@ -1,16 +1,5 @@
 package dev.deelter.modelinteractions.interaction;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.BooleanSupplier;
-import java.util.function.Predicate;
-
-import org.joml.Vector3f;
-
 import dev.deelter.modelinteractions.config.MiConfig;
 import dev.deelter.modelinteractions.debug.DummyManager;
 import dev.deelter.modelinteractions.input.PcInput;
@@ -27,6 +16,11 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
+
+import java.util.*;
+import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 /**
  * Lifting and throwing with both VR hands, being lifted, and having your head turned.
@@ -42,41 +36,107 @@ public final class CarryClient {
 	 */
 	public static final float SOLO_WIDTH = 1.0f, SOLO_HEIGHT = 1.6f, GROUP_WIDTH = 1.6f, GROUP_HEIGHT = 2.0f;
 	private static final long SEND_INTERVAL = 50_000_000L, TIMEOUT = 500_000_000L, LOOK_INTERVAL = 150_000_000L;
-	/** A hand speed (blocks/s) below this when letting go is just setting down. */
+	/**
+	 * A hand speed (blocks/s) below this when letting go is just setting down.
+	 */
 	private static final float THROW_MIN = 2.5f;
 	private static final float MAX_STEER = 0.8f;
-	/** Slack of a hand on the ground, blocks; beyond it the held one is pulled along. */
+	/**
+	 * Slack of a hand on the ground, blocks; beyond it the held one is pulled along.
+	 */
 	private static final double TETHER_SLACK = 0.15;
 	private static final float MAX_THROW_LOCAL = 1.6f;
-	/** Hand speed to throw speed (per tick); a VR arm swing is short, so it gets some help. */
+	/**
+	 * Hand speed to throw speed (per tick); a VR arm swing is short, so it gets some help.
+	 */
 	private static final float THROW_GAIN = 1.8f / 20f;
-
-	/** True while our own VR session runs; set by the Vivecraft integration. */
-	@Setter private static BooleanSupplier selfInVr = () -> false;
-	/** Whether another player plays in VR; set by the Vivecraft integration. */
-	@Setter private static Predicate<Player> isVrPlayer = p -> false;
-
-	private CarryClient() {}
+	private static final Vector3f PC_POS = new Vector3f(), PC_VEL = new Vector3f();
+	private static final Map<UUID, Mine> MINE = new HashMap<>();
+	/**
+	 * Of the things we hold: which may be lifted (the rest only dragged).
+	 */
+	private static final java.util.Set<UUID> LIFTABLE = new java.util.HashSet<>();
 
 	// ------------------------------------------------------------------ carrier
+	/**
+	 * Entities someone holds up off the ground right now (told by the server, or our own groups).
+	 */
+	private static final Map<UUID, Long> HELD_UP = new HashMap<>();
+	/**
+	 * Just let go of: a throw's fast swing must not also hit it.
+	 */
+	private static final Map<UUID, Long> RELEASED = new HashMap<>();
+	/**
+	 * Groups we run ourselves: test dummies and, in singleplayer, mobs.
+	 */
+	private static final Map<UUID, CarryGroup> LOCAL = new HashMap<>();
+	private static final Map<UUID, SpCarry> SP = new HashMap<>();
+	private static final Map<UUID, Long> SP_THROWN = new HashMap<>();
+	private static final int BREAK_FREE_TICKS = 8;
+	private static final double AWAY_SPEED = 0.04;
+	private static final Map<UUID, Long> LOOK_SENT = new HashMap<>();
+	private static final long IDLE_NANOS = 2_000_000_000L;
+	/**
+	 * True while our own VR session runs; set by the Vivecraft integration.
+	 */
+	@Setter
+	private static BooleanSupplier selfInVr = () -> false;
+	/**
+	 * Whether another player plays in VR; set by the Vivecraft integration.
+	 */
+	@Setter
+	private static Predicate<Player> isVrPlayer = p -> false;
+	@Setter
+	private static HandPose vrHands;
+	private static boolean pcValid;
+	private static long explainedAt;
+	/**
+	 * Set by the Vivecraft integration: what to do when something we hold comes off the ground.
+	 */
+	@Setter
+	private static Runnable onLifted = () -> {};
+	private static UUID carrier;
+	private static Vec3 carryGoal;
+	private static long carryNanos, escapedUntil;
+	private static int carryHands = 2;
+	private static Vec3 tetherGoal;
+	/**
+	 * Ticks we have been walking away from whoever holds us.
+	 */
+	private static int awayTicks;
+	private static long tetherNanos;
+	/**
+	 * Who holds us on the ground, if anyone.
+	 */
+	private static UUID tetherFrom;
+	private static UUID lookFrom;
+	/**
+	 * Last time we turned our own head (mouse), and the rotation seen last frame.
+	 */
+	private static long lastOwnTurn;
+	private static float seenYaw = Float.NaN, seenPitch;
 
-	/** World position and velocity (blocks/s) of a VR hand (ids 1, 2), or null. */
-	public interface HandPose {
-		Vector3f pos(int hand);
+	// singleplayer: drive the mob on the integrated server directly -----------
+	private static Vec3 lookPoint;
+	private static long lookNanos, lookCancelledUntil;
+	private static float lastYaw, lastPitch;
+	private static boolean steering;
 
-		Vector3f vel(int hand);
+	private CarryClient() {
 	}
 
-	@Setter private static HandPose vrHands;
-	private static final Vector3f PC_POS = new Vector3f(), PC_VEL = new Vector3f();
-	private static boolean pcValid;
+	/** Velocity towards the goal, so the mob still collides with blocks instead of going through. */
 
-	/** The mouse grab's point this frame; it counts as one hand. */
+	/**
+	 * The mouse grab's point this frame; it counts as one hand.
+	 */
 	public static void setPcHand(Vector3f pos, float dt) {
 		if (pcValid && dt > 0) PC_VEL.lerp(new Vector3f(pos).sub(PC_POS).div(dt), 0.5f);
 		PC_POS.set(pos);
 		pcValid = true;
 	}
+
+	// ------------------------------------------------------------------ being carried (us)
 
 	public static void clearPcHand() {
 		pcValid = false;
@@ -94,20 +154,9 @@ public final class CarryClient {
 		return v == null ? new Vector3f() : v;
 	}
 
-	/** What we told about a target: how many hands, when, and how fast they moved last. */
-	private static final class Mine {
-		int hands;
-		long sentNanos;
-		final Vector3f mid = new Vector3f(), vel = new Vector3f();
-	}
-
-	private static final Map<UUID, Mine> MINE = new HashMap<>();
-	/** Of the things we hold: which may be lifted (the rest only dragged). */
-	private static final java.util.Set<UUID> LIFTABLE = new java.util.HashSet<>();
-	/** Entities someone holds up off the ground right now (told by the server, or our own groups). */
-	private static final Map<UUID, Long> HELD_UP = new HashMap<>();
-
-	/** Held up in the air by someone: its model hangs from the grip instead of falling or jumping normally. */
+	/**
+	 * Held up in the air by someone: its model hangs from the grip instead of falling or jumping normally.
+	 */
 	public static boolean isHeldUp(UUID uuid) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player != null && uuid.equals(mc.player.getUUID())) return carrier != null;
@@ -119,11 +168,10 @@ public final class CarryClient {
 		}
 		return t != null;
 	}
-	/** Just let go of: a throw's fast swing must not also hit it. */
-	private static final Map<UUID, Long> RELEASED = new HashMap<>();
-	private static long explainedAt;
 
-	/** Both hands on something that won't lift: say why, now and then. */
+	/**
+	 * Both hands on something that won't lift: say why, now and then.
+	 */
 	private static void explain(Minecraft mc, PlayerRig rig) {
 		long now = System.nanoTime();
 		if (!MiConfig.get().isCarryHints() || now - explainedAt < 5_000_000_000L || mc.player == null) return;
@@ -133,7 +181,7 @@ public final class CarryClient {
 		if (e instanceof Player) {
 			key = !RelayNet.isActive() ? "modelinteractions.msg.carry_no_server"
 					: !InteractionManager.get().allowed(rig.getUuid(), mc.player.getUUID(), InteractionKind.CARRY) ? "modelinteractions.msg.carry_not_allowed"
-					: null;
+					  : null;
 		} else if (e != null && (e.getBbWidth() > GROUP_WIDTH || e.getBbHeight() > GROUP_HEIGHT)) {
 			key = "modelinteractions.msg.carry_too_big";
 		} else if (e != null && !mc.hasSingleplayerServer() && !(RelayNet.isActive() && RelayNet.isCarryAllowed())) {
@@ -144,7 +192,9 @@ public final class CarryClient {
 		if (key != null) mc.player.sendOverlayMessage(net.minecraft.network.chat.Component.translatable(key));
 	}
 
-	/** Don't let a swing attack what we hold or just threw (Vivecraft hits whatever a fast hand touches). */
+	/**
+	 * Don't let a swing attack what we hold or just threw (Vivecraft hits whatever a fast hand touches).
+	 */
 	public static boolean protects(UUID target) {
 		if (MINE.containsKey(target)) return true;
 		InteractionManager mgr = InteractionManager.get();
@@ -158,25 +208,30 @@ public final class CarryClient {
 		RELEASED.remove(target);
 		return false;
 	}
-	/** Groups we run ourselves: test dummies and, in singleplayer, mobs. */
-	private static final Map<UUID, CarryGroup> LOCAL = new HashMap<>();
 
-	/** Can this be lifted at all (by us, maybe together with others)? */
+	/**
+	 * Can this be lifted at all (by us, maybe together with others)?
+	 */
 	public static boolean carryable(PlayerRig rig) {
 		Minecraft mc = Minecraft.getInstance();
 		Entity e = InteractionManager.entityOf(mc.level, rig);
 		InteractionManager mgr = InteractionManager.get();
-		if (!(e instanceof LivingEntity) || mc.player == null || e == mc.player || e.isPassenger() || e.isVehicle()) return false;
+		if (!(e instanceof LivingEntity) || mc.player == null || e == mc.player || e.isPassenger() || e.isVehicle())
+			return false;
 		if (!mgr.allowed(rig.getUuid(), mc.player.getUUID(), InteractionKind.CARRY)) return false;
 		if (mgr.isLocalOnly(rig.getUuid())) return true;
 		if (e instanceof Player) return RelayNet.isActive();
-		if (e.getBbWidth() > GROUP_WIDTH || e.getBbHeight() > GROUP_HEIGHT || PcInput.vanillaHandUseWins(mc, e)) return false;
+		if (e.getBbWidth() > GROUP_WIDTH || e.getBbHeight() > GROUP_HEIGHT || PcInput.vanillaHandUseWins(mc, e))
+			return false;
 		// a mannequin set to immovable is part of a build: the game itself won't let it move
-		if (e instanceof net.minecraft.world.entity.decoration.Mannequin m && ((dev.deelter.modelinteractions.mixin.MannequinAccessor) m).mi$immovable()) return false;
+		if (e instanceof net.minecraft.world.entity.decoration.Mannequin m && ((dev.deelter.modelinteractions.mixin.MannequinAccessor) m).mi$immovable())
+			return false;
 		return mc.hasSingleplayerServer() || RelayNet.isActive() && RelayNet.isCarryAllowed();
 	}
 
-	/** Can a hand on it pull it along the ground (players who allow it, mobs)? */
+	/**
+	 * Can a hand on it pull it along the ground (players who allow it, mobs)?
+	 */
 	public static boolean draggable(PlayerRig rig) {
 		Minecraft mc = Minecraft.getInstance();
 		Entity e = InteractionManager.entityOf(mc.level, rig);
@@ -186,7 +241,8 @@ public final class CarryClient {
 		if (mgr.isLocalOnly(rig.getUuid())) return true;
 		if (e instanceof Player) return RelayNet.isActive();
 		if (PcInput.vanillaHandUseWins(mc, e)) return false;
-		if (e instanceof net.minecraft.world.entity.decoration.Mannequin m && ((dev.deelter.modelinteractions.mixin.MannequinAccessor) m).mi$immovable()) return false;
+		if (e instanceof net.minecraft.world.entity.decoration.Mannequin m && ((dev.deelter.modelinteractions.mixin.MannequinAccessor) m).mi$immovable())
+			return false;
 		return mc.hasSingleplayerServer() || RelayNet.isActive() && RelayNet.isCarryAllowed();
 	}
 
@@ -210,7 +266,7 @@ public final class CarryClient {
 		}
 		long now = System.nanoTime();
 		// hands that let go: a fast one throws, a slow one sets down
-		for (Iterator<Map.Entry<UUID, Mine>> it = MINE.entrySet().iterator(); it.hasNext();) {
+		for (Iterator<Map.Entry<UUID, Mine>> it = MINE.entrySet().iterator(); it.hasNext(); ) {
 			Map.Entry<UUID, Mine> e = it.next();
 			Mine m = e.getValue();
 			int n = holding.getOrDefault(e.getKey(), List.of()).size();
@@ -245,7 +301,8 @@ public final class CarryClient {
 				Grab g = mgr.localGrab(h);
 				Vector3f hand = handPos(h);
 				// first frame this hand counts: remember where the feet are from it
-				if (g.getCarryOffset() == null) g.setCarryOffset(new Vector3f((float) feet.x, (float) feet.y, (float) feet.z).sub(hand));
+				if (g.getCarryOffset() == null)
+					g.setCarryOffset(new Vector3f((float) feet.x, (float) feet.y, (float) feet.z).sub(hand));
 				mid.add(hand).add(g.getCarryOffset());
 				vel.add(handVel(h));
 			}
@@ -280,17 +337,20 @@ public final class CarryClient {
 		UUID me = mc.player.getUUID();
 		switch (c.sub()) {
 			case Wire.CARRY_START, Wire.CARRY_MOVE -> g.hold(me, c.hands(), c.x(), c.y(), c.z(), ms);
-			case Wire.CARRY_THROW, Wire.CARRY_DROP -> g.letGo(me, c.hands(), c.sub() == Wire.CARRY_THROW, c.vx(), c.vy(), c.vz(), ms);
+			case Wire.CARRY_THROW, Wire.CARRY_DROP ->
+					g.letGo(me, c.hands(), c.sub() == Wire.CARRY_THROW, c.vx(), c.vy(), c.vz(), ms);
 			default -> {
 			}
 		}
 	}
 
-	/** Runs the groups we decide ourselves, the way the plugin runs its own. */
+	/**
+	 * Runs the groups we decide ourselves, the way the plugin runs its own.
+	 */
 	private static void tickLocalGroups(Minecraft mc) {
 		if (LOCAL.isEmpty()) return;
 		long ms = System.currentTimeMillis();
-		for (Iterator<Map.Entry<UUID, CarryGroup>> it = LOCAL.entrySet().iterator(); it.hasNext();) {
+		for (Iterator<Map.Entry<UUID, CarryGroup>> it = LOCAL.entrySet().iterator(); it.hasNext(); ) {
 			Map.Entry<UUID, CarryGroup> e = it.next();
 			UUID target = e.getKey();
 			CarryGroup g = e.getValue();
@@ -344,19 +404,9 @@ public final class CarryClient {
 		else singleplayer(mc, c);
 	}
 
-	/** Set by the Vivecraft integration: what to do when something we hold comes off the ground. */
-	@Setter private static Runnable onLifted = () -> {};
-
 	private static void liftedFeedback() {
 		onLifted.run();
 	}
-
-	// singleplayer: drive the mob on the integrated server directly -----------
-
-	private record SpCarry(UUID target, Vec3 goal, int hands, long lastNanos) {}
-
-	private static final Map<UUID, SpCarry> SP = new HashMap<>();
-	private static final Map<UUID, Long> SP_THROWN = new HashMap<>();
 
 	private static void singleplayer(Minecraft mc, Wire.Carry c) {
 		var server = mc.getSingleplayerServer();
@@ -395,7 +445,9 @@ public final class CarryClient {
 		});
 	}
 
-	/** Registers the integrated server's tick for singleplayer carrying. */
+	/**
+	 * Registers the integrated server's tick for singleplayer carrying.
+	 */
 	public static void register() {
 		// a world closed while holding a mob: give it its gravity back, the flag would be saved with it
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -434,8 +486,9 @@ public final class CarryClient {
 		});
 	}
 
-	/** Velocity towards the goal, so the mob still collides with blocks instead of going through. */
-	/** Feet towards {@code goal}, by velocity, so it still collides with blocks instead of going through. */
+	/**
+	 * Feet towards {@code goal}, by velocity, so it still collides with blocks instead of going through.
+	 */
 	private static void steer(Entity e, Vec3 goal) {
 		Vec3 d = goal.subtract(e.position()).scale(0.5);
 		if (d.length() > MAX_STEER) d = d.normalize().scale(MAX_STEER);
@@ -443,20 +496,11 @@ public final class CarryClient {
 		((dev.deelter.modelinteractions.mixin.EntityAccessor) e).mi$markVelocityDirty();
 	}
 
-	// ------------------------------------------------------------------ being carried (us)
+	// ------------------------------------------------------------------ head turning
 
-	private static UUID carrier;
-	private static Vec3 carryGoal;
-	private static long carryNanos, escapedUntil;
-	private static int carryHands = 2;
-	private static Vec3 tetherGoal;
-	/** Ticks we have been walking away from whoever holds us. */
-	private static int awayTicks;
-	private static final int BREAK_FREE_TICKS = 8;
-	private static final double AWAY_SPEED = 0.04;
-	private static long tetherNanos;
-
-	/** The server says another player lifts / moves / throws / drops us. */
+	/**
+	 * The server says another player lifts / moves / throws / drops us.
+	 */
 	public static void onCarried(UUID from, Wire.Carry c) {
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer me = mc.player;
@@ -503,7 +547,9 @@ public final class CarryClient {
 		}
 	}
 
-	/** Every client tick: follow the carrier's hands, or break free with jump / sneak. */
+	/**
+	 * Every client tick: follow the carrier's hands, or break free with jump / sneak.
+	 */
 	public static void tick(Minecraft mc) {
 		tickLocalGroups(mc);
 		tether(mc);
@@ -563,9 +609,6 @@ public final class CarryClient {
 				dir.z * Math.max(keep, pull.length()) + (v.z - dir.z * keep) * 0.3);
 	}
 
-	/** Who holds us on the ground, if anyone. */
-	private static UUID tetherFrom;
-
 	/**
 	 * Holder and held don't push each other apart: we and what we hold, we and whoever holds
 	 * us. Runs for the integrated server too, so singleplayer mobs don't shove the carrier.
@@ -576,7 +619,8 @@ public final class CarryClient {
 
 	private static boolean holdsOrHeldBy(Entity player, Entity other) {
 		Minecraft mc = Minecraft.getInstance();
-		if (!(player instanceof Player) || mc.player == null || !player.getUUID().equals(mc.player.getUUID())) return false;
+		if (!(player instanceof Player) || mc.player == null || !player.getUUID().equals(mc.player.getUUID()))
+			return false;
 		UUID o = other.getUUID();
 		return protects(o) || o.equals(carrier) || o.equals(tetherFrom) && tetherGoal != null;
 	}
@@ -585,11 +629,9 @@ public final class CarryClient {
 		return carrier != null;
 	}
 
-	// ------------------------------------------------------------------ head turning
-
-	private static final Map<UUID, Long> LOOK_SENT = new HashMap<>();
-
-	/** While we hold someone's head: ask their head to turn to us. */
+	/**
+	 * While we hold someone's head: ask their head to turn to us.
+	 */
 	public static void lookTick(UUID target) {
 		long now = System.nanoTime();
 		Long last = LOOK_SENT.get(target);
@@ -614,16 +656,6 @@ public final class CarryClient {
 		RelayNet.INSTANCE.sendRaw(Wire.encodeLook(l, null));
 	}
 
-	private static UUID lookFrom;
-	private static final long IDLE_NANOS = 2_000_000_000L;
-	/** Last time we turned our own head (mouse), and the rotation seen last frame. */
-	private static long lastOwnTurn;
-	private static float seenYaw = Float.NaN, seenPitch;
-	private static Vec3 lookPoint;
-	private static long lookNanos, lookCancelledUntil;
-	private static float lastYaw, lastPitch;
-	private static boolean steering;
-
 	public static void onLook(UUID from, Wire.Look l) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null) return;
@@ -633,7 +665,8 @@ public final class CarryClient {
 			var mode = MiConfig.get().getPermissions().getLookMode();
 			if (mode == dev.deelter.modelinteractions.config.LookMode.NEVER || selfInVr.getAsBoolean()) return;
 			// an active player keeps their view; one that sat still for a while can be turned
-			if (mode == dev.deelter.modelinteractions.config.LookMode.IDLE && System.nanoTime() - lastOwnTurn < IDLE_NANOS && lookFrom == null) return;
+			if (mode == dev.deelter.modelinteractions.config.LookMode.IDLE && System.nanoTime() - lastOwnTurn < IDLE_NANOS && lookFrom == null)
+				return;
 			if (!l.active()) {
 				if (from.equals(lookFrom)) lookFrom = null;
 				return;
@@ -651,7 +684,9 @@ public final class CarryClient {
 		}
 	}
 
-	/** Every frame: turn our camera smoothly; moving the mouse takes it back. */
+	/**
+	 * Every frame: turn our camera smoothly; moving the mouse takes it back.
+	 */
 	public static void frame(Minecraft mc, float dt) {
 		LocalPlayer me = mc.player;
 		long now = System.nanoTime();
@@ -714,5 +749,26 @@ public final class CarryClient {
 		lookFrom = null;
 		steering = false;
 		LOOK_SENT.clear();
+	}
+
+	/**
+	 * World position and velocity (blocks/s) of a VR hand (ids 1, 2), or null.
+	 */
+	public interface HandPose {
+		Vector3f pos(int hand);
+
+		Vector3f vel(int hand);
+	}
+
+	/**
+	 * What we told about a target: how many hands, when, and how fast they moved last.
+	 */
+	private static final class Mine {
+		final Vector3f mid = new Vector3f(), vel = new Vector3f();
+		int hands;
+		long sentNanos;
+	}
+
+	private record SpCarry(UUID target, Vec3 goal, int hands, long lastNanos) {
 	}
 }

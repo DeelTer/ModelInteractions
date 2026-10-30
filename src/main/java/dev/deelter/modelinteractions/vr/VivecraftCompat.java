@@ -1,28 +1,8 @@
 package dev.deelter.modelinteractions.vr;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import org.joml.Vector3f;
-import org.vivecraft.api.VRAPI;
-import org.vivecraft.api.client.HeldInteractModule;
-import org.vivecraft.api.client.VRClientAPI;
-import org.vivecraft.api.data.VRBodyPart;
-import org.vivecraft.api.data.VRBodyPartData;
-import org.vivecraft.api.data.VRPose;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.config.MiConfig;
-import dev.deelter.modelinteractions.interaction.CarryClient;
-import dev.deelter.modelinteractions.interaction.Grab;
-import dev.deelter.modelinteractions.interaction.HandSample;
-import dev.deelter.modelinteractions.interaction.HitTester;
-import dev.deelter.modelinteractions.interaction.InteractionManager;
-import dev.deelter.modelinteractions.interaction.PartHit;
-import dev.deelter.modelinteractions.interaction.PlayerRig;
+import dev.deelter.modelinteractions.interaction.*;
 import dev.deelter.modelinteractions.model.BodyRegion;
 import dev.deelter.modelinteractions.model.Bone;
 import dev.deelter.modelinteractions.physics.PartType;
@@ -32,6 +12,15 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
+import org.vivecraft.api.VRAPI;
+import org.vivecraft.api.client.HeldInteractModule;
+import org.vivecraft.api.client.VRClientAPI;
+import org.vivecraft.api.data.VRBodyPart;
+import org.vivecraft.api.data.VRBodyPartData;
+import org.vivecraft.api.data.VRPose;
+
+import java.util.*;
 
 /**
  * Vivecraft integration. Only loaded when Vivecraft is present.
@@ -42,19 +31,33 @@ import net.minecraft.world.phys.Vec3;
  * </ul>
  */
 public final class VivecraftCompat {
-	/** Hand ids 1/2 so they don't clash with the PC grab (0). */
+	private static final Map<String, Vector3f> PREV = new HashMap<>();
+	/**
+	 * Hand velocity over the last frames, blocks per second, for throws.
+	 */
+	private static final Vector3f[] HAND_VEL = {new Vector3f(), new Vector3f()};
+	private static final Vector3f[] HAND_PREV = new Vector3f[2];
+	private static final Vector3f[] HAND_POS = new Vector3f[2];
+	private static final Vector3f[] HAND_PEAK = {new Vector3f(), new Vector3f()};
+	private static final long[] HAND_PEAK_AT = new long[2];
+	private static final float PET_MIN_SPEED = 0.15f, PET_MAX_SPEED = 1.6f;
+	private static long lastFrame;
+	private static float frameDt;
+	private static long lastHaptic;
+	private static long lastTouchHaptic;
+	private VivecraftCompat() {
+	}
+
+	/**
+	 * Hand ids 1/2 so they don't clash with the PC grab (0).
+	 */
 	static int handId(InteractionHand hand) {
 		return hand == InteractionHand.MAIN_HAND ? 1 : 2;
 	}
 
-	private static final Map<String, Vector3f> PREV = new HashMap<>();
-	private static long lastFrame;
-	private static float frameDt;
-	private static long lastHaptic;
-
-	private VivecraftCompat() {}
-
-	/** @return per-frame callback */
+	/**
+	 * @return per-frame callback
+	 */
 	public static Runnable init() {
 		try {
 			VRClientAPI.instance().addClientRegistrationHandler(e -> e.registerInteractModules(new GrabModule()));
@@ -115,14 +118,9 @@ public final class VivecraftCompat {
 		carry(mgr, pose);
 	}
 
-	/** Hand velocity over the last frames, blocks per second, for throws. */
-	private static final Vector3f[] HAND_VEL = { new Vector3f(), new Vector3f() };
-	private static final Vector3f[] HAND_PREV = new Vector3f[2];
-	private static final Vector3f[] HAND_POS = new Vector3f[2];
-	private static final Vector3f[] HAND_PEAK = { new Vector3f(), new Vector3f() };
-	private static final long[] HAND_PEAK_AT = new long[2];
-
-	/** Positions and smoothed speeds of both hands, for lifting and throwing. */
+	/**
+	 * Positions and smoothed speeds of both hands, for lifting and throwing.
+	 */
 	private static void carry(InteractionManager mgr, VRPose pose) {
 		for (InteractionHand h : InteractionHand.values()) {
 			int i = h.ordinal();
@@ -144,7 +142,9 @@ public final class VivecraftCompat {
 		}
 	}
 
-	/** Haptic feedback grows with how far the part is pulled from where it wants to be. */
+	/**
+	 * Haptic feedback grows with how far the part is pulled from where it wants to be.
+	 */
 	private static void tension(InteractionManager mgr, Grab g, Vector3f hand, InteractionHand h) {
 		if (!MiConfig.get().isHaptics()) return;
 		Vector3f rest = mgr.grabbedPointWorld(g, new Vector3f());
@@ -157,9 +157,9 @@ public final class VivecraftCompat {
 		}
 	}
 
-	private static long lastTouchHaptic;
-
-	/** A soft tick in the controller when your own hand brushes a part, so touch is felt, not only seen. */
+	/**
+	 * A soft tick in the controller when your own hand brushes a part, so touch is felt, not only seen.
+	 */
 	private static void touched(HandSample h, PartHit hit) {
 		Minecraft mc = Minecraft.getInstance();
 		if (!MiConfig.get().isHaptics() || mc.player == null || !h.owner().equals(mc.player.getUUID())) return;
@@ -169,8 +169,6 @@ public final class VivecraftCompat {
 		float amp = Math.min(1f, 0.15f + h.velocity().length() * 0.4f);
 		VRClientAPI.instance().triggerHapticPulse(h.hand() == 1 ? VRBodyPart.MAIN_HAND : VRBodyPart.OFF_HAND, 0.01f, 160f, amp, 0f);
 	}
-
-	private static final float PET_MIN_SPEED = 0.15f, PET_MAX_SPEED = 1.6f;
 
 	private static void gestures(InteractionManager mgr, VRPose pose) {
 		Minecraft mc = Minecraft.getInstance();
@@ -195,7 +193,8 @@ public final class VivecraftCompat {
 		for (PlayerRig rig : mgr.rigs()) {
 			if (rig.getUuid().equals(self) || !rig.isWorldValid()) continue;
 			Vector3f body = bodyCenter(rig);
-			if (body != null && body.distance(hands[0]) < 0.45f && body.distance(hands[1]) < 0.45f) mgr.hug(rig.getUuid());
+			if (body != null && body.distance(hands[0]) < 0.45f && body.distance(hands[1]) < 0.45f)
+				mgr.hug(rig.getUuid());
 		}
 	}
 
@@ -211,7 +210,9 @@ public final class VivecraftCompat {
 		return rig.getModelToWorld().transformPosition(new Vector3f(rig.getBodyCenter()));
 	}
 
-	/** Hands of every VR player nearby, with velocity, for touch physics. */
+	/**
+	 * Hands of every VR player nearby, with velocity, for touch physics.
+	 */
 	private static List<HandSample> hands() {
 		List<HandSample> out = new ArrayList<>();
 		Minecraft mc = Minecraft.getInstance();
@@ -242,11 +243,15 @@ public final class VivecraftCompat {
 		return out;
 	}
 
-	/** Vivecraft interact module: grab with trigger/grip while the hand touches a part. */
+	/**
+	 * Vivecraft interact module: grab with trigger/grip while the hand touches a part.
+	 */
 	static final class GrabModule implements HeldInteractModule {
 		private static final Identifier ID = Identifier.fromNamespaceAndPath(ModelInteractions.MOD_ID, "grab");
 		private final PartHit[] candidate = new PartHit[2];
-		/** This hand's trigger is down to mark the other hand's grab, not to grab. */
+		/**
+		 * This hand's trigger is down to mark the other hand's grab, not to grab.
+		 */
 		private final boolean[] marking = new boolean[2];
 
 		private static InteractionHand other(InteractionHand h) {

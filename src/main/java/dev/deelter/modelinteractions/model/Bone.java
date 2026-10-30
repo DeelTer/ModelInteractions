@@ -1,11 +1,10 @@
 package dev.deelter.modelinteractions.model;
 
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-
 import dev.deelter.modelinteractions.physics.PartType;
 import lombok.Getter;
 import lombok.Setter;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 /**
  * Static description of one model element plus its pose captured on the last frame.
@@ -13,30 +12,49 @@ import lombok.Setter;
  */
 @Getter
 public class Bone {
+	/**
+	 * Model-space frame of the parent (identity for roots).
+	 */
+	final Matrix4f parentModel = new Matrix4f();
+	/**
+	 * Parent frame -> bone frame, animated rest pose without our deformation.
+	 */
+	final Matrix4f localRest = new Matrix4f();
+	/**
+	 * Model-space frame of the bone at rest.
+	 */
+	final Matrix4f model = new Matrix4f();
+	/**
+	 * Model-space frame as drawn this frame: the rest frame with every spring offset above it applied.
+	 */
+	final Matrix4f deformed = new Matrix4f();
 	private final int id;
 	private final Bone parent;
 	private final BodyRegion region;
 	private final boolean root;
-	/** Box in the bone's own frame, blocks. */
+	/**
+	 * Box in the bone's own frame, blocks.
+	 */
 	private final Vector3f boxMin = new Vector3f(), boxMax = new Vector3f();
-	/** Point of the box farthest from the pivot, bone frame. */
+	/**
+	 * Point of the box farthest from the pivot, bone frame.
+	 */
 	private final Vector3f tip = new Vector3f();
+	@Setter
+	boolean visible = true;
 	private float lengthPx;
-	@Setter private PartType type = PartType.STATIC;
-	/** Part name from vanilla models ("left_ear"); null for CPM elements, which have none. */
-	@Setter private String name;
-	/** Box volume in px^3, and of this bone plus everything attached below it. Used as weight for pushes. */
-	@Setter private float mass, subtreeMass;
-
-	/** Model-space frame of the parent (identity for roots). */
-	final Matrix4f parentModel = new Matrix4f();
-	/** Parent frame -> bone frame, animated rest pose without our deformation. */
-	final Matrix4f localRest = new Matrix4f();
-	/** Model-space frame of the bone at rest. */
-	final Matrix4f model = new Matrix4f();
-	/** Model-space frame as drawn this frame: the rest frame with every spring offset above it applied. */
-	final Matrix4f deformed = new Matrix4f();
-	@Setter boolean visible = true;
+	@Setter
+	private PartType type = PartType.STATIC;
+	/**
+	 * Part name from vanilla models ("left_ear"); null for CPM elements, which have none.
+	 */
+	@Setter
+	private String name;
+	/**
+	 * Box volume in px^3, and of this bone plus everything attached below it. Used as weight for pushes.
+	 */
+	@Setter
+	private float mass, subtreeMass;
 
 	public Bone(int id, Bone parent, BodyRegion region, boolean root) {
 		this.id = id;
@@ -71,18 +89,36 @@ public class Bone {
 		return dest.set(boxMin).add(boxMax).mul(0.5f);
 	}
 
-	public Matrix4f parentModel() { return parentModel; }
-	public Matrix4f localRest() { return localRest; }
-	public Matrix4f model() { return model; }
-	public Matrix4f deformed() { return deformed; }
-	public boolean visible() { return visible; }
+	public Matrix4f parentModel() {
+		return parentModel;
+	}
 
-	/** Can be hit at all. Hitting a rigid (STATIC) part grabs the nearest movable parent, or turns the torso. */
+	public Matrix4f localRest() {
+		return localRest;
+	}
+
+	public Matrix4f model() {
+		return model;
+	}
+
+	public Matrix4f deformed() {
+		return deformed;
+	}
+
+	public boolean visible() {
+		return visible;
+	}
+
+	/**
+	 * Can be hit at all. Hitting a rigid (STATIC) part grabs the nearest movable parent, or turns the torso.
+	 */
 	public boolean isInteractive() {
 		return visible && boxMax.x > boxMin.x;
 	}
 
-	/** This bone if it can move, else its nearest movable ancestor; null means the torso. */
+	/**
+	 * This bone if it can move, else its nearest movable ancestor; null means the torso.
+	 */
 	public Bone movable() {
 		Bone b = this;
 		while (b != null && !b.type.isGrabbable()) b = b.parent;

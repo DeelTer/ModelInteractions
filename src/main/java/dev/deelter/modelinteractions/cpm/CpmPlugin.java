@@ -1,15 +1,10 @@
 package dev.deelter.modelinteractions.cpm;
 
-import java.io.DataInputStream;
-import java.util.UUID;
-import java.util.function.BiConsumer;
-
 import com.tom.cpl.nbt.NBTTagCompound;
 import com.tom.cpm.api.ICPMPlugin;
 import com.tom.cpm.api.IClientAPI;
 import com.tom.cpm.api.IClientAPI.MessageSender;
 import com.tom.cpm.api.ICommonAPI;
-
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.interaction.InteractionManager;
 import dev.deelter.modelinteractions.net.NetBridge;
@@ -17,17 +12,39 @@ import dev.deelter.modelinteractions.net.NetRouter;
 import dev.deelter.modelinteractions.wire.Wire;
 import net.minecraft.client.Minecraft;
 
+import java.io.DataInputStream;
+import java.util.UUID;
+import java.util.function.BiConsumer;
+
 /**
  * CPM API plugin: a fallback transport over CPM plugin messages for servers that run CPM but
  * not the Model Interactions plugin, plus access to the local player's CPM animations.
  * The bytes are the same {@link Wire} messages, wrapped in an NBT byte array.
  */
 public class CpmPlugin implements ICPMPlugin, NetBridge {
-	private static final String[] STATE_CHANNELS = { "perm", "pose", "types" };
-
+	private static final String[] STATE_CHANNELS = {"perm", "pose", "types"};
+	private final MessageSender[] states = new MessageSender[Wire.S_COUNT];
 	private IClientAPI api;
 	private MessageSender act;
-	private final MessageSender[] states = new MessageSender[Wire.S_COUNT];
+
+	private static BiConsumer<UUID, NBTTagCompound> onMain(Handler h) {
+		return (uuid, tag) -> {
+			byte[] data = tag.getByteArray("d");
+			Minecraft.getInstance().execute(() -> {
+				try {
+					if (uuid != null && data != null) h.accept(uuid, data);
+				} catch (Exception e) {
+					ModelInteractions.LOG.debug("Bad interaction message from {}", uuid, e);
+				}
+			});
+		};
+	}
+
+	private static NBTTagCompound wrap(byte[] data) {
+		NBTTagCompound t = new NBTTagCompound();
+		t.setByteArray("d", data);
+		return t;
+	}
 
 	@Override
 	public void initClient(IClientAPI api) {
@@ -48,29 +65,6 @@ public class CpmPlugin implements ICPMPlugin, NetBridge {
 		mgr.setAnimator(this::playOwnAnimation);
 		NetRouter.get().setCpm(this);
 		ModelInteractions.LOG.info("Registered CPM plugin messages");
-	}
-
-	private interface Handler {
-		void accept(UUID sender, byte[] data) throws Exception;
-	}
-
-	private static BiConsumer<UUID, NBTTagCompound> onMain(Handler h) {
-		return (uuid, tag) -> {
-			byte[] data = tag.getByteArray("d");
-			Minecraft.getInstance().execute(() -> {
-				try {
-					if (uuid != null && data != null) h.accept(uuid, data);
-				} catch (Exception e) {
-					ModelInteractions.LOG.debug("Bad interaction message from {}", uuid, e);
-				}
-			});
-		};
-	}
-
-	private static NBTTagCompound wrap(byte[] data) {
-		NBTTagCompound t = new NBTTagCompound();
-		t.setByteArray("d", data);
-		return t;
 	}
 
 	@Override
@@ -106,5 +100,9 @@ public class CpmPlugin implements ICPMPlugin, NetBridge {
 	public boolean playOwnAnimation(String name, int value) {
 		if (api == null || api.getAnimationPlaying(name) < 0) return false;
 		return api.playAnimation(name, value);
+	}
+
+	private interface Handler {
+		void accept(UUID sender, byte[] data) throws Exception;
 	}
 }
