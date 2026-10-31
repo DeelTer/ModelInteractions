@@ -31,7 +31,11 @@ public enum InteractionKind {
 	/**
 	 * Pulling you along by a hand on the ground, and holding you back.
 	 */
-	DRAG;
+	DRAG,
+	/**
+	 * Kept from falling by whoever holds a part of you.
+	 */
+	CATCH;
 
 	public static final InteractionKind[] VALUES = values();
 

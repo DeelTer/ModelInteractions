@@ -53,6 +53,24 @@ class RelayRulesTest {
 	}
 
 	@Test
+	void lostGrabIsRepairedByAMoveInReach() {
+		Session s = S.session();
+		UUID t = UUID.randomUUID();
+		// the grab never arrived, or the target was out of reach then
+		assertFalse(s.admitMove(1, t, 4, false));
+		assertFalse(s.holds(1, t, 4));
+		// in reach again: everyone gets to see the rest of the hold
+		assertTrue(s.admitMove(1, t, 4, true));
+		assertTrue(s.holds(1, t, 4));
+		// and a started hold goes on when the two walk apart
+		assertTrue(s.admitMove(1, t, 4, false));
+		// another part in reach takes over the hand, so its release is relayed too
+		assertTrue(s.admitMove(1, t, 5, true));
+		assertFalse(s.holds(1, t, 4));
+		assertTrue(s.holds(1, t, 5));
+	}
+
+	@Test
 	void rateLimitBurstsThenThrottles() {
 		TokenBucket b = new TokenBucket(1, 3);
 		assertTrue(b.take());

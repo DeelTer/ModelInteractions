@@ -104,7 +104,13 @@ public final class DebugCommands {
 								+ ": ears pink, tail orange, hair purple, wings cyan, limbs green, head yellow, other white"));
 						return 1;
 					}))
-					.then(literal("rigs").executes(DebugCommands::listRigs));
+					.then(literal("rigs").executes(DebugCommands::listRigs))
+					.then(literal("net").executes(c -> {
+						c.getSource().sendFeedback(Component.literal("Relay " + (dev.deelter.modelinteractions.net.RelayNet.isActive() ? "active, range " + dev.deelter.modelinteractions.net.RelayNet.getRange()
+								: "NOT active after " + dev.deelter.modelinteractions.net.RelayNet.getHellos() + " hellos" + (dev.deelter.modelinteractions.net.RelayNet.isVersionMismatch() ? ", server speaks another protocol" : ""))));
+						InteractionManager.get().netStatus().forEach(l -> c.getSource().sendFeedback(Component.literal(l)));
+						return 1;
+					}));
 
 			var set = literal("set");
 			for (PartType t : PartType.VALUES) {

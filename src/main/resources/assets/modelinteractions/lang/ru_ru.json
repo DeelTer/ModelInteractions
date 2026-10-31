@@ -91,6 +91,8 @@
   "modelinteractions.config.vrGestures.tooltip": "Поглаживания и объятия просто по движению рук, с сердечками. Выкл: только хватать и толкать",
   "modelinteractions.config.carryHints": "Объяснять, почему нельзя поднять",
   "modelinteractions.config.allow.dragMe": "Меня могут тащить и удерживать (за руку)",
+  "modelinteractions.config.allow.catchMe": "Меня ловят, если я падаю, пока меня держат",
+  "modelinteractions.config.allow.catchMe.tooltip": "Если вы падаете, пока вас держат за часть тела, вы повиснете у них в руке. Прыжок или присед — вырваться. Нужен плагин на сервере",
   "modelinteractions.config.allow.dragMe.tooltip": "Если держат на земле — вы идёте следом и не можете уйти. Присед — вырваться. Нужен плагин на сервере",
   "modelinteractions.config.sounds": "Звук шлепка",
   "modelinteractions.msg.version_mismatch": "Model Interactions: версии мода и плагина на сервере разные, синхронизации не будет"

@@ -216,6 +216,10 @@ public class MiConfig {
 		 */
 		private boolean dragMe = false;
 		/**
+		 * Falling while someone holds a part of you: you hang from their hand. Jump or sneak breaks free.
+		 */
+		private boolean catchMe = true;
+		/**
 		 * Holding your head turns your camera towards whoever holds it. IDLE: only while you haven't
 		 * moved the mouse for 2 seconds. In VR only your model's head turns.
 		 */

@@ -58,6 +58,9 @@ public class ModelInteractionsClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> {
 			publishRetry = 0;
 			RelayNet.reset();
+			// a proxy moves us to another server without a disconnect: nothing from the last one holds
+			CarryClient.reset();
+			mgr.clear();
 		});
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> {
 			DummyManager.reset();

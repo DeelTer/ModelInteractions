@@ -103,10 +103,10 @@ final class Carrying implements Listener {
 				if (h == null) {
 					int required = mayCarry(sender, t, targetSession);
 					boolean drag = mayDrag(sender, t, targetSession);
-					if (required <= 0 && !drag) return;
+					if (required <= 0 && !drag && !mayCatch(sender, t, targetSession)) return;
 					h = new Held(t, required, drag);
 					held.put(t.getUniqueId(), h);
-				} else if (!h.group.has(who) && mayCarry(sender, t, targetSession) <= 0 && !mayDrag(sender, t, targetSession)) {
+				} else if (!h.group.has(who) && mayCarry(sender, t, targetSession) <= 0 && !mayDrag(sender, t, targetSession) && !mayCatch(sender, t, targetSession)) {
 					return;
 				}
 				Location goal = clampToHolder(sender, c, t);
@@ -187,6 +187,15 @@ final class Carrying implements Listener {
 			return 0;
 		}
 		return CarryGroup.handsNeeded(vol, rules.soloVolume());
+	}
+
+	/**
+	 * Whoever holds a part of a player who falls keeps them from falling: only in the air.
+	 */
+	private boolean mayCatch(Player sender, Entity t, Session targetSession) {
+		if (!(t instanceof Player) || t == sender || t.isInsideVehicle() || tooDangerous(t, System.currentTimeMillis())) return false;
+		return targetSession != null && targetSession.perm != null
+				&& (targetSession.perm.flags() & Wire.FLAG_CATCH) != 0 && targetSession.allowsActor(sender.getName());
 	}
 
 	/**

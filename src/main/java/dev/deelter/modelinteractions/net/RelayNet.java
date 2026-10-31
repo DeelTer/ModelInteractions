@@ -16,7 +16,7 @@ import java.util.UUID;
  */
 public final class RelayNet implements NetBridge {
 	public static final RelayNet INSTANCE = new RelayNet();
-	private static final int HELLO_INTERVAL = 40, HELLO_TRIES = 15;
+	private static final int HELLO_INTERVAL = 40, HELLO_TRIES = 15, HELLO_SLOW_INTERVAL = 600;
 	@Getter
 	private static boolean active;
 	@Getter
@@ -33,7 +33,10 @@ public final class RelayNet implements NetBridge {
 	 */
 	@Getter
 	private static boolean adultAllowed;
-	private static int helloTicks, hellos;
+	private static int helloTicks;
+	@Getter
+	private static int hellos;
+	@Getter
 	private static boolean versionMismatch;
 
 	private RelayNet() {
@@ -44,8 +47,9 @@ public final class RelayNet implements NetBridge {
 	 * while we were still joining would be lost, so we ask once we can hear the answer.
 	 */
 	public static void tick() {
-		if (active || versionMismatch || hellos >= HELLO_TRIES || !ClientPlayNetworking.canSend(MiPayload.TYPE)) return;
-		if (helloTicks++ % HELLO_INTERVAL != 0) return;
+		if (active || versionMismatch || !ClientPlayNetworking.canSend(MiPayload.TYPE)) return;
+		// a server that took long to answer, or got the plugin just now, still gets its chance
+		if (helloTicks++ % (hellos < HELLO_TRIES ? HELLO_INTERVAL : HELLO_SLOW_INTERVAL) != 0) return;
 		hellos++;
 		ClientPlayNetworking.send(new MiPayload(Wire.encodeClientHello()));
 	}

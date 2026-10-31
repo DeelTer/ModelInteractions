@@ -72,6 +72,7 @@ public class PlayerRig {
 	private Source source = Source.VANILLA;
 	@Getter
 	private long sourceSeenNanos;
+	private long vanillaSince;
 	@Getter
 	@Setter
 	private int entityId = -1;
@@ -115,11 +116,23 @@ public class PlayerRig {
 	public void markSource(Source s) {
 		source = s;
 		sourceSeenNanos = System.nanoTime();
+		if (s == Source.CPM) vanillaSince = 0;
 	}
 
 	/**
 	 * CPM drew this player within the last half second; the vanilla backend keeps out.
 	 */
+	/**
+	 * The vanilla hook wants a rig CPM had. Coming back into view it can run just before CPM's
+	 * hook; taking over then would flip the model key, and with it the bone numbers others
+	 * send and the shape it has. So CPM must stay silent for a second first.
+	 */
+	public boolean vanillaTakesOver(long now) {
+		if (source != Source.CPM) return true;
+		if (vanillaSince == 0) vanillaSince = now;
+		return now - vanillaSince >= 1_000_000_000L;
+	}
+
 	public boolean cpmActive(long now) {
 		return source == Source.CPM && now - sourceSeenNanos < 500_000_000L;
 	}

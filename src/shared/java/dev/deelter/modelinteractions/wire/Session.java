@@ -20,6 +20,10 @@ public final class Session {
 	 */
 	public Wire.Perm perm;
 	public int strikes;
+	/**
+	 * What the server refused from this player and why, for the stats command.
+	 */
+	public final Map<String, Integer> refused = new java.util.TreeMap<>();
 
 	public Session(double actRate, double actBurst, double stateRate, double stateBurst, double reqRate, double reqBurst) {
 		actions = new TokenBucket(actRate, actBurst);
@@ -40,6 +44,22 @@ public final class Session {
 	public boolean holds(int hand, UUID target, int bone) {
 		Held h = grabs[hand];
 		return h != null && h.target().equals(target) && h.bone() == bone;
+	}
+
+	/**
+	 * Whether a move counts. A grab that was started keeps going; a move without one starts it
+	 * if the target is in reach: every move says all a grab does, so a refused or lost grab
+	 * doesn't leave the rest of the hold invisible to everyone.
+	 */
+	public boolean admitMove(int hand, UUID target, int bone, boolean inReach) {
+		if (holds(hand, target, bone)) return true;
+		if (!inReach) return false;
+		grab(hand, target, bone);
+		return true;
+	}
+
+	public void refuse(String why) {
+		refused.merge(why, 1, Integer::sum);
 	}
 
 	public void release(int hand) {

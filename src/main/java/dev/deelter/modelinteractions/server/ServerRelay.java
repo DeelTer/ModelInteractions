@@ -177,7 +177,10 @@ public final class ServerRelay implements ModInitializer {
 			DataInputStream in = Wire.in(message);
 			switch (Wire.kind(in)) {
 				case Wire.K_ACT -> {
-					if (!s.actions.take()) return;
+					if (!s.actions.take()) {
+						s.refuse("rate");
+						return;
+					}
 					Wire.Act act = Wire.readAct(in);
 					Wire.end(in);
 					onAct(player, s, act);
@@ -196,7 +199,10 @@ public final class ServerRelay implements ModInitializer {
 					onLook(player, l);
 				}
 				case Wire.K_STATE -> {
-					if (!s.states.take()) return;
+					if (!s.states.take()) {
+						s.refuse("state-rate");
+						return;
+					}
 					int state = in.readUnsignedByte();
 					if (state >= Wire.S_COUNT) return;
 					byte[] body = Wire.canonicalState(state, Wire.readStateBody(in));
@@ -244,16 +250,26 @@ public final class ServerRelay implements ModInitializer {
 			t = sender;
 		} else {
 			t = sender.level().getEntity(target);
-			if (!reachable(sender, t)) return;
+			// a hold that began in reach is shown as long as anyone near could see it
+			if (act.op() == Wire.OP_MOVE ? !touchable(sender, t) || t.distanceToSqr(sender) > config.range * config.range : !reachable(sender, t)) {
+				s.refuse("reach");
+				return;
+			}
 		}
 		if (t instanceof ServerPlayer tp && tp != sender) {
 			Session ts = sessions.get(tp.getUUID());
-			if (ts != null && !ts.allowsActor(sender.getName().getString())) return;
+			if (ts != null && !ts.allowsActor(sender.getName().getString())) {
+				s.refuse("not-allowed");
+				return;
+			}
 		}
 		switch (act.op()) {
 			case Wire.OP_GRAB -> s.grab(act.hand(), target, act.bone());
 			case Wire.OP_MOVE -> {
-				if (!s.holds(act.hand(), target, act.bone())) return;
+				if (!s.admitMove(act.hand(), target, act.bone(), reachable(sender, t))) {
+					s.refuse("move-without-grab");
+					return;
+				}
 			}
 			case Wire.OP_PET -> {
 				if (!s.cooldown("pet", target, config.petCooldownMs)) return;
@@ -291,14 +307,18 @@ public final class ServerRelay implements ModInitializer {
 		return !p.isDeadOrDying() && !p.isSpectator();
 	}
 
-	private boolean reachable(ServerPlayer sender, Entity t) {
+	private boolean touchable(ServerPlayer sender, Entity t) {
 		if (!(t instanceof LivingEntity le) || t.isRemoved() || le.isDeadOrDying() || t.level() != sender.level()) return false;
 		if (t instanceof ServerPlayer tp) {
 			if (tp.isSpectator()) return false;
 		} else if (!config.mobs) {
 			return false;
 		}
-		return t.getBoundingBox().distanceToSqr(sender.getEyePosition()) <= config.reach * config.reach;
+		return true;
+	}
+
+	private boolean reachable(ServerPlayer sender, Entity t) {
+		return touchable(sender, t) && t.getBoundingBox().distanceToSqr(sender.getEyePosition()) <= config.reach * config.reach;
 	}
 
 	private void relay(byte[] msg, ServerLevel level, Vec3 at, double range, ServerPlayer except) {
@@ -324,10 +344,10 @@ public final class ServerRelay implements ModInitializer {
 				if (h == null) {
 					int required = mayCarry(sender, t);
 					boolean drag = mayDrag(sender, t);
-					if (required <= 0 && !drag) return;
+					if (required <= 0 && !drag && !mayCatch(sender, t)) return;
 					h = new Held(t, required, drag);
 					held.put(t.getUUID(), h);
-				} else if (!h.group.has(who) && mayCarry(sender, t) <= 0 && !mayDrag(sender, t)) {
+				} else if (!h.group.has(who) && mayCarry(sender, t) <= 0 && !mayDrag(sender, t) && !mayCatch(sender, t)) {
 					return;
 				}
 				Vec3 goal = clampToHolder(sender, c, t);
@@ -364,6 +384,14 @@ public final class ServerRelay implements ModInitializer {
 		if (t.getBbWidth() > config.groupMaxWidth || t.getBbHeight() > config.groupMaxHeight) return 0;
 		double w = config.maxWidth;
 		return CarryGroup.handsNeeded(t.getBbWidth() * t.getBbWidth() * t.getBbHeight(), w * w * config.maxHeight);
+	}
+
+	/**
+	 * Whoever holds a part of a player who falls keeps them from falling: only in the air.
+	 */
+	private boolean mayCatch(ServerPlayer sender, Entity t) {
+		if (!(t instanceof ServerPlayer) || t == sender || t.isPassenger() || tooDangerous(t, System.currentTimeMillis())) return false;
+		return playerAllows(sender, t, Wire.FLAG_CATCH);
 	}
 
 	private boolean mayDrag(ServerPlayer sender, Entity t) {

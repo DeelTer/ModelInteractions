@@ -74,7 +74,7 @@ public final class VanillaHooks {
 			rig.setCapturedNanos(now);
 		}
 		// players wearing a CPM model are handled by CPM's own hook
-		if (rig.cpmActive(now)) return;
+		if (rig.cpmActive(now) || !rig.vanillaTakesOver(now)) return;
 
 		Layout layout = LAYOUTS.computeIfAbsent(model, VanillaHooks::layout);
 		if (!rig.isFor(model)) rebuild(rig, model, layout);

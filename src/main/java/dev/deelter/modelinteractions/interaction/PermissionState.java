@@ -53,6 +53,7 @@ public record PermissionState(PermissionMode mode, int flags, Set<String> whitel
 		if (p.isFreeMode()) f |= InteractionKind.FREE_MODE.bit();
 		if (p.isCarryMe()) f |= InteractionKind.CARRY.bit();
 		if (p.isDragMe()) f |= InteractionKind.DRAG.bit();
+		if (p.isCatchMe()) f |= InteractionKind.CATCH.bit();
 		if (p.getLookMode() != dev.deelter.modelinteractions.config.LookMode.NEVER) f |= InteractionKind.LOOK.bit();
 		return new PermissionState(p.getMode(), f, lower(p.getWhitelist()), lower(p.getBlacklist()));
 	}

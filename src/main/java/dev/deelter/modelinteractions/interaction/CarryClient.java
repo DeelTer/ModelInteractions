@@ -247,6 +247,16 @@ public final class CarryClient {
 	}
 
 	/**
+	 * Would a hand on this player keep them from falling?
+	 */
+	public static boolean catchable(PlayerRig rig) {
+		Minecraft mc = Minecraft.getInstance();
+		Entity e = InteractionManager.entityOf(mc.level, rig);
+		if (!(e instanceof Player) || mc.player == null || e == mc.player || e.isPassenger()) return false;
+		return InteractionManager.get().allowed(rig.getUuid(), mc.player.getUUID(), InteractionKind.CATCH) && RelayNet.isActive();
+	}
+
+	/**
 	 * Every frame: tell who holds what with how many hands. Each of our hands on a liftable
 	 * thing counts, the mouse as one; whoever decides (server, or us for dummies and in
 	 * singleplayer) adds them up with everyone else's.
@@ -287,7 +297,7 @@ public final class CarryClient {
 			PlayerRig rig = mgr.existingRig(e.getKey());
 			if (rig == null) continue;
 			boolean lift = carryable(rig);
-			if (!lift && !draggable(rig)) {
+			if (!lift && !draggable(rig) && !catchable(rig)) {
 				if (e.getValue().size() >= 2) explain(mc, rig);
 				continue;
 			}
@@ -522,8 +532,8 @@ public final class CarryClient {
 			}
 			return;
 		}
-		// lifted needs "carry me"; caught while falling by someone holding our hand is "drag me" too
-		if (me == null || !p.isCarryMe() && !p.isDragMe()) return;
+		// lifted needs "carry me"; caught while falling by someone holding a part of us "catch me" or "drag me"
+		if (me == null || !p.isCarryMe() && !p.isDragMe() && !p.isCatchMe()) return;
 		if (selfInVr.getAsBoolean() && !p.isCarryMeInVr()) return;
 		long now = System.nanoTime();
 		if (now < escapedUntil) return;

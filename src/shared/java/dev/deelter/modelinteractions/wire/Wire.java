@@ -46,7 +46,7 @@ public final class Wire {
 	/**
 	 * Permission flag bits the server reads (same as the mod's InteractionKind bits).
 	 */
-	public static final int FLAG_CARRY = 1 << 12, FLAG_LOOK = 1 << 13, FLAG_DRAG = 1 << 14;
+	public static final int FLAG_CARRY = 1 << 12, FLAG_LOOK = 1 << 13, FLAG_DRAG = 1 << 14, FLAG_CATCH = 1 << 15;
 	/**
 	 * World coordinates beyond the world border are nonsense.
 	 */

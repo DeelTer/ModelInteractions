@@ -74,6 +74,7 @@ public final class ClothConfigScreen {
 		perm.addEntry(e.startBooleanToggle(t("freeMode"), pr.isFreeMode()).setDefaultValue(dpr.isFreeMode()).setTooltip(t("freeMode.tooltip")).setSaveConsumer(pr::setFreeMode).build());
 		perm.addEntry(e.startBooleanToggle(t("allow.carryMe"), pr.isCarryMe()).setDefaultValue(dpr.isCarryMe()).setTooltip(t("allow.carryMe.tooltip")).setSaveConsumer(pr::setCarryMe).build());
 		perm.addEntry(e.startBooleanToggle(t("allow.dragMe"), pr.isDragMe()).setDefaultValue(dpr.isDragMe()).setTooltip(t("allow.dragMe.tooltip")).setSaveConsumer(pr::setDragMe).build());
+		perm.addEntry(e.startBooleanToggle(t("allow.catchMe"), pr.isCatchMe()).setDefaultValue(dpr.isCatchMe()).setTooltip(t("allow.catchMe.tooltip")).setSaveConsumer(pr::setCatchMe).build());
 		perm.addEntry(e.startBooleanToggle(t("allow.carryMeInVr"), pr.isCarryMeInVr()).setDefaultValue(dpr.isCarryMeInVr()).setTooltip(t("allow.carryMeInVr.tooltip")).setSaveConsumer(pr::setCarryMeInVr).build());
 		perm.addEntry(e.startEnumSelector(t("allow.lookMode"), dev.deelter.modelinteractions.config.LookMode.class, pr.getLookMode()).setDefaultValue(dpr.getLookMode())
 				.setEnumNameProvider(m -> t("lookMode." + m.name().toLowerCase(java.util.Locale.ROOT))).setTooltip(t("allow.lookMode.tooltip")).setSaveConsumer(pr::setLookMode).build());

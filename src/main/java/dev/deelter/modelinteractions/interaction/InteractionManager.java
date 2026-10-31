@@ -44,6 +44,7 @@ public final class InteractionManager {
 	 * A held grab that doesn't move is re-sent this often, well within {@link #REMOTE_GRAB_TIMEOUT}.
 	 */
 	private static final long KEEPALIVE = 1_000_000_000L;
+	private static final long REPUBLISH = 30_000_000_000L;
 	private static final long CAPTURE_MAX_AGE = 500_000_000L;
 	private static final int MAX_CHAIN = 3;
 	/**
@@ -85,7 +86,7 @@ public final class InteractionManager {
 	/**
 	 * When we last asked the server for a player's states.
 	 */
-	private final Cache<UUID, Long> stateRequests = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(10)).build();
+	private final Cache<UUID, Long> stateRequests = Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(3)).build();
 	private final Map<Grab.Key, Grab> grabs = new HashMap<>();
 	private final List<Supplier<List<HandSample>>> handSources = new ArrayList<>();
 	private final Map<String, Long> reactionCooldown = new HashMap<>();
@@ -101,7 +102,11 @@ public final class InteractionManager {
 	private Animator animator = (n, v) -> false;
 	@Setter
 	private TouchListener touchListener;
-	private long lastFrame, lastStateSweep;
+	private long lastFrame, lastStateSweep, lastRepublish;
+	/**
+	 * Remote grabs not shown because the holder sees another model of the target.
+	 */
+	private long otherModelFrames;
 	private long publishPoseAt = -1;
 	@Getter
 	private boolean permissionsPublished;
@@ -247,6 +252,22 @@ public final class InteractionManager {
 			stateRequests.put(u, System.nanoTime());
 			net.requestStates(u);
 		}
+	}
+
+	/**
+	 * For /mi debug net.
+	 */
+	public List<String> netStatus() {
+		List<String> out = new ArrayList<>();
+		long remote = grabs.values().stream().filter(g -> !g.isLocal()).count();
+		out.add("Grabs: " + (grabs.size() - remote) + " mine, " + remote + " by others; hidden frames (other model) " + otherModelFrames);
+		UUID self = self();
+		for (PlayerRig rig : rigs.asMap().values()) {
+			if (rig.getUuid().equals(self) || !isPlayer(rig)) continue;
+			out.add(nameOf(rig.getUuid()) + ": permissions " + (permissions.getIfPresent(rig.getUuid()) != null ? "known" : "UNKNOWN")
+					+ ", model " + rig.getSource() + " " + rig.getModelKey());
+		}
+		return out;
 	}
 
 	public void clear() {
@@ -413,6 +434,14 @@ public final class InteractionManager {
 		}
 
 		sendLocalMoves(now);
+		// a state the server dropped (rate limit) or lost must not stay wrong until the next join
+		if (now - lastRepublish > REPUBLISH) {
+			lastRepublish = now;
+			if (permissionsPublished) {
+				publishOwnPermissions();
+				publishOwnPose();
+			}
+		}
 		if (now - lastStateSweep > 2_000_000_000L) {
 			lastStateSweep = now;
 			requestMissingStates();
@@ -467,7 +496,10 @@ public final class InteractionManager {
 
 	private void applyGrab(PlayerRig rig, Grab g, float dt) {
 		if (!g.isPrivateOnly() && !allowed(g.getTarget(), g.getKey().grabber(), kindOf(rig, g.getBoneId()))) return;
-		if (!sameModel(rig, g.getModelHash())) return;
+		if (!sameModel(rig, g.getModelHash())) {
+			otherModelFrames++;
+			return;
+		}
 		if (g.isLocal()) g.getSmoothModel().set(g.getGoalModel());
 		else g.getSmoothModel().lerp(g.getGoalModel(), 1f - (float) Math.exp(-dt * 18f));
 		Vector3f goal = g.getSmoothModel();
@@ -668,6 +700,7 @@ public final class InteractionManager {
 	 * The server just answered our hello: it knows nothing about us yet (or forgot, after a reload).
 	 */
 	public void onRelayHello() {
+		stateRequests.invalidateAll();
 		publishOwnPermissions();
 		publishOwnPose();
 	}
@@ -1013,6 +1046,8 @@ public final class InteractionManager {
 					return;
 				}
 				Protocol.vec(act.point(), g.getGoalModel());
+				// the holder's view of the model can settle after the grab (it was still loading)
+				g.setModelHash(act.model());
 				g.setLastUpdateNanos(System.nanoTime());
 			}
 			case Wire.OP_RELEASE -> {

@@ -91,6 +91,8 @@
   "modelinteractions.config.vrGestures.tooltip": "Pets and hugs from hand movements alone, with hearts. Off: only grabbing and pushing",
   "modelinteractions.config.carryHints": "Say why something can't be lifted",
   "modelinteractions.config.allow.dragMe": "Others may drag and hold me (by a hand)",
+  "modelinteractions.config.allow.catchMe": "Others holding me catch me when I fall",
+  "modelinteractions.config.allow.catchMe.tooltip": "Falling while someone holds a part of you, you hang from their hand. Jump or sneak to break free. Needs the server plugin",
   "modelinteractions.config.allow.dragMe.tooltip": "Held on the ground you follow when they walk off and can't walk away from them. Sneak to break free. Needs the server plugin",
   "modelinteractions.config.sounds": "Slap sound",
   "modelinteractions.msg.version_mismatch": "Model Interactions: mod and server plugin versions differ, interactions won't sync"

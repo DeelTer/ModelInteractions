@@ -176,13 +176,19 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 			DataInputStream in = Wire.in(message);
 			switch (Wire.kind(in)) {
 				case Wire.K_ACT -> {
-					if (!s.actions.take()) return;
+					if (!s.actions.take()) {
+						s.refuse("rate");
+						return;
+					}
 					Wire.Act act = Wire.readAct(in);
 					Wire.end(in);
 					onAct(player, s, act);
 				}
 				case Wire.K_STATE -> {
-					if (!s.states.take()) return;
+					if (!s.states.take()) {
+						s.refuse("state-rate");
+						return;
+					}
 					int state = in.readUnsignedByte();
 					if (state >= Wire.S_COUNT) return;
 					byte[] body = Wire.canonicalState(state, Wire.readStateBody(in));
@@ -237,19 +243,29 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 			t = sender;
 		} else {
 			t = getServer().getEntity(target);
-			if (!reachable(sender, t)) return;
+			// a hold that began in reach is shown as long as anyone near could see it
+			if (act.op() == Wire.OP_MOVE ? !touchable(sender, t) || sender.getLocation().distanceSquared(t.getLocation()) > settings.range() * settings.range() : !reachable(sender, t)) {
+				s.refuse("reach");
+				return;
+			}
 		}
 
 		// the target's own choice of who may touch them
 		if (t instanceof Player tp && tp != sender) {
 			Session ts = sessions.get(tp.getUniqueId());
-			if (ts != null && !ts.allowsActor(sender.getName())) return;
+			if (ts != null && !ts.allowsActor(sender.getName())) {
+				s.refuse("not-allowed");
+				return;
+			}
 		}
 
 		switch (act.op()) {
 			case Wire.OP_GRAB -> s.grab(act.hand(), target, act.bone());
 			case Wire.OP_MOVE -> {
-				if (!s.holds(act.hand(), target, act.bone())) return;
+				if (!s.admitMove(act.hand(), target, act.bone(), reachable(sender, t))) {
+					s.refuse("move-without-grab");
+					return;
+				}
 			}
 			case Wire.OP_PET -> {
 				if (!s.cooldown("pet", target, settings.petCooldownMs())) return;
@@ -305,9 +321,9 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	}
 
 	/**
-	 * The target exists, is alive, in the sender's world and within reach of the sender.
+	 * The target exists, is alive, in the sender's world and may be touched by the sender.
 	 */
-	private boolean reachable(Player sender, Entity t) {
+	private boolean touchable(Player sender, Entity t) {
 		if (!(t instanceof LivingEntity le) || !t.isValid() || le.isDead()) return false;
 		if (!t.getWorld().equals(sender.getWorld())) return false;
 		if (t instanceof Player tp) {
@@ -315,6 +331,11 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		} else if (!settings.mobs() || !sender.hasPermission("modelinteractions.mobs")) {
 			return false;
 		}
+		return true;
+	}
+
+	private boolean reachable(Player sender, Entity t) {
+		if (!touchable(sender, t)) return false;
 		// distance from the eyes to the target's box, so big mobs can be reached at their edge
 		var box = t.getBoundingBox();
 		Location eye = sender.getEyeLocation();
@@ -379,6 +400,10 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		}
 		if (args.length == 1 && args[0].equalsIgnoreCase("stats")) {
 			sender.sendMessage("Model Interactions: " + sessions.size() + " players with the mod");
+			sessions.forEach((id, s) -> {
+				Player p = getServer().getPlayer(id);
+				sender.sendMessage(" " + (p == null ? id : p.getName()) + ": permissions " + (s.perm != null ? "known" : "NOT published") + ", refused " + s.refused);
+			});
 			return true;
 		}
 		return false;

@@ -47,8 +47,9 @@ public final class CpmHooks {
 			if (worldPass) {
 				capture(rig, def);
 				rig.setLastSeenNanos(System.nanoTime());
-				rig.markSource(PlayerRig.Source.CPM);
 			}
+			// any pass, the inventory too: first person has no world pass for our own model
+			rig.markSource(PlayerRig.Source.CPM);
 			if (rig.hasDeformation() && (worldPass || MiConfig.get().isDeformInGui())) apply(rig, def);
 		} catch (RuntimeException e) {
 			ModelInteractions.LOG.warn("Failed to apply interactions for {}", player.getUUID(), e);
