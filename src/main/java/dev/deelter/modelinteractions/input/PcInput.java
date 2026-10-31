@@ -172,10 +172,6 @@ public final class PcInput {
 	public static void tick(Minecraft mc) {
 		InteractionManager mgr = InteractionManager.get();
 		boolean useDown = mc.options.keyUse.isDown() && mc.gui.screen() == null;
-		if (useGrabbing && (!useDown || mgr.localGrab(HAND) == null)) {
-			useGrabbing = false;
-			mgr.releaseLocal(HAND, false);
-		}
 		// a quick tap of Shift while holding: "keep this shape when I let go", tap again to undo.
 		// Holding Shift is just sneaking and changes nothing
 		boolean shift = mc.options.keyShift.isDown() && mc.gui.screen() == null;
@@ -188,6 +184,12 @@ public final class PcInput {
 			toggleKeep(mc);
 		if (mgr.localGrab(HAND) == null) shiftTapValid = false;
 		shiftWasDown = shift;
+		// Shift pressed during the hold and still down when letting go: the tap never got to end, it counts
+		boolean keepNow = shift && shiftTapValid;
+		if (useGrabbing && (!useDown || mgr.localGrab(HAND) == null)) {
+			useGrabbing = false;
+			mgr.releaseLocal(HAND, keepNow);
+		}
 		if (usePetting) {
 			PartHit hit = useDown && mc.player.isShiftKeyDown() ? pick(mc, 1f) : null;
 			if (hit == null) usePetting = false;
@@ -199,7 +201,7 @@ public final class PcInput {
 			PartHit hit = pick(mc, 1f, b -> true);
 			if (hit != null && mgr.startLocalGrab(HAND, hit) != null) holdDistance = holdTarget = hit.distance();
 		} else if (!down && grabWasDown && !useGrabbing) {
-			mgr.releaseLocal(HAND, false);
+			mgr.releaseLocal(HAND, keepNow);
 		}
 		grabWasDown = down;
 

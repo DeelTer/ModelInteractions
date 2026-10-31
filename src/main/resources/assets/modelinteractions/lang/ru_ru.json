@@ -95,5 +95,6 @@
   "modelinteractions.config.allow.catchMe.tooltip": "Если вы падаете, пока вас держат за часть тела, вы повиснете у них в руке. Прыжок или присед — вырваться. Нужен плагин на сервере",
   "modelinteractions.config.allow.dragMe.tooltip": "Если держат на земле — вы идёте следом и не можете уйти. Присед — вырваться. Нужен плагин на сервере",
   "modelinteractions.config.sounds": "Звук шлепка",
+  "modelinteractions.msg.keep_denied": "Этот игрок не разрешает сохранять форму",
   "modelinteractions.msg.version_mismatch": "Model Interactions: версии мода и плагина на сервере разные, синхронизации не будет"
 }

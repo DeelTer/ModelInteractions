@@ -381,7 +381,10 @@ public final class InteractionManager {
 			rig.joints().values().forEach(j -> j.setHeld(false));
 			if (rig.getBodyJoint() != null) rig.getBodyJoint().setHeld(false);
 			Entity e = entityOf(level, rig);
-			if (e == null || now - rig.getLastSeenNanos() > 1_000_000_000L || e.distanceToSqr(cam) > SIM_RANGE * SIM_RANGE) {
+			// our own model isn't drawn in first person, but what others do to it still has to happen:
+			// we publish the shape it ends up in, for everyone
+			boolean seen = e == mc.player || now - rig.getLastSeenNanos() <= 1_000_000_000L;
+			if (e == null || !seen || e.distanceToSqr(cam) > SIM_RANGE * SIM_RANGE) {
 				rig.setWorldValid(false);
 				continue;
 			}
@@ -439,7 +442,10 @@ public final class InteractionManager {
 			lastRepublish = now;
 			if (permissionsPublished) {
 				publishOwnPermissions();
-				publishOwnPose();
+				// what we last told, not what the rig says now: a rig just rebuilt knows no shape yet
+				UUID me = self();
+				Map<Integer, Vector3f> told = me == null ? null : savedPoses.getIfPresent(me);
+				if (told != null) net.publishState(Wire.S_POSE, Protocol.pose(told));
 			}
 		}
 		if (now - lastStateSweep > 2_000_000_000L) {
@@ -811,6 +817,8 @@ public final class InteractionManager {
 			return;
 		}
 		boolean pin = keepsShape(g.getTarget(), self, keep);
+		if (keep && !pin && Minecraft.getInstance().player != null)
+			Minecraft.getInstance().player.sendOverlayMessage(net.minecraft.network.chat.Component.translatable("modelinteractions.msg.keep_denied"));
 		if (pin) pinChain(g);
 		else if (unpinChain(g) && g.getTarget().equals(self)) schedulePosePublish();
 		send(g.getTarget(), Protocol.release(g.getTarget(), g.getBoneId(), hand, pin));
@@ -932,20 +940,22 @@ public final class InteractionManager {
 		CarryClient.lookTick(g.getTarget());
 	}
 
-	private void pinChain(Grab g) {
+	private boolean pinChain(Grab g) {
 		PlayerRig rig = rigs.getIfPresent(g.getTarget());
-		if (rig == null || !sameModel(rig, g.getModelHash())) return;
+		if (rig == null || !sameModel(rig, g.getModelHash())) return false;
 		if (g.getBoneId() == Wire.BODY_BONE) {
 			rig.bodyJoint().pinCurrent();
-			return;
+			return true;
 		}
 		Bone bone = rig.bone(g.getBoneId());
+		if (bone == null) return false;
 		int depth = 0;
 		for (Bone b = bone; b != null && depth <= MAX_CHAIN; b = b.getParent(), depth++) {
 			if (depth > 0 && (b.isRoot() || b.getType() != bone.getType())) break;
 			SpringJoint j = rig.joint(b.getId());
 			if (j != null) j.pinCurrent();
 		}
+		return true;
 	}
 
 	/**
@@ -1054,8 +1064,8 @@ public final class InteractionManager {
 				Grab g = grabs.remove(key);
 				if (g == null) return;
 				if (keepsShape(target, sender, act.keep())) {
-					pinChain(g);
-					if (toMe) posedNow();
+					// not pinned here (we see another model): don't tell everyone the shape is gone
+					if (pinChain(g) && toMe) posedNow();
 				} else if (unpinChain(g) && toMe) {
 					schedulePosePublish();
 				}
