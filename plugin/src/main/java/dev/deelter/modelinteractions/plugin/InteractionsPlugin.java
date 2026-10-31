@@ -208,8 +208,15 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	}
 
 	private void onAct(Player sender, Session s, Wire.Act act) {
-		if (!canAct(sender)) return;
 		UUID target = act.target();
+		// letting go always counts, however far the target got: otherwise everyone sees it held on
+		if (act.op() == Wire.OP_RELEASE) {
+			if (!s.holds(act.hand(), target, act.bone())) return;
+			s.release(act.hand());
+			relayRelease(sender, act, getServer().getEntity(target));
+			return;
+		}
+		if (!canAct(sender)) return;
 		Entity t;
 		if (act.op() == Wire.OP_RESET) {
 			// only about yourself
@@ -231,10 +238,6 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 			case Wire.OP_GRAB -> s.grab(act.hand(), target, act.bone());
 			case Wire.OP_MOVE -> {
 				if (!s.holds(act.hand(), target, act.bone())) return;
-			}
-			case Wire.OP_RELEASE -> {
-				if (!s.holds(act.hand(), target, act.bone())) return;
-				s.release(act.hand());
 			}
 			case Wire.OP_PET -> {
 				if (!s.cooldown("pet", target, settings.petCooldownMs())) return;
@@ -265,6 +268,11 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		byte[] msg = Wire.encodeLook(new Wire.Look(l.active(), tp.getUniqueId(), eye.getX(), eye.getY(), eye.getZ()), sender.getUniqueId());
 		// the target is near itself, so the relay reaches it too
 		relay(msg, tp.getLocation(), settings.range(), sender);
+	}
+
+	private void relayRelease(Player sender, Wire.Act act, Entity target) {
+		Location at = target != null && target.isValid() ? target.getLocation() : sender.getLocation();
+		relay(Wire.encodeAct(act, sender.getUniqueId()), at, settings.range(), sender);
 	}
 
 	private boolean canAct(Player p) {
