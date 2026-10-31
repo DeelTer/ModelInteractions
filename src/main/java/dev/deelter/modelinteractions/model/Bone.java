@@ -55,6 +55,11 @@ public class Bone {
 	 */
 	@Setter
 	private float mass, subtreeMass;
+	/**
+	 * A small detail sitting on another element that isn't its parent: it moves with that element.
+	 */
+	@Setter
+	private Bone host;
 
 	public Bone(int id, Bone parent, BodyRegion region, boolean root) {
 		this.id = id;
@@ -120,7 +125,7 @@ public class Bone {
 	 * This bone if it can move, else its nearest movable ancestor; null means the torso.
 	 */
 	public Bone movable() {
-		Bone b = this;
+		Bone b = host != null ? host : this;
 		while (b != null && !b.type.isGrabbable()) b = b.parent;
 		return b;
 	}

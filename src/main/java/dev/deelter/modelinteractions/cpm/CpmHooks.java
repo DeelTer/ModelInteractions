@@ -80,6 +80,7 @@ public final class CpmHooks {
 		InteractionManager mgr = InteractionManager.get();
 		Map<String, String> overrides = MiConfig.get().getOverrides().getOrDefault(rig.getModelKey(), Map.of());
 		Map<Integer, PartType> owner = mgr.ownerTypes(rig.getUuid(), rig.getModelKey());
+		List<Bone> guessed = new ArrayList<>();
 		for (Bone b : out) {
 			PartType t = parse(overrides.get(Integer.toString(b.getId())));
 			if (t == null) t = owner.get(b.getId());
@@ -88,9 +89,11 @@ public final class CpmHooks {
 				while (root.getParent() != null) root = root.getParent();
 				Matrix4f rootToBone = new Matrix4f(root.model()).invert().mul(b.model());
 				t = PartClassifier.classify(b, rootToBone);
+				guessed.add(b);
 			}
 			b.setType(t);
 		}
+		PartClassifier.glueDetails(out, guessed);
 		rig.computeMasses();
 		// torso turns about the bottom of the vanilla body box
 		for (Bone b : out) {
@@ -180,6 +183,10 @@ public final class CpmHooks {
 		Matrix4f body = rig.bodyTransform(new Matrix4f());
 		boolean turned = (body.properties() & Matrix4f.PROPERTY_IDENTITY) == 0;
 		for (Bone b : rig.bones()) {
+			if (b.getHost() != null) {
+				follow(b, def);
+				continue;
+			}
 			SpringJoint j = rig.joints().get(b.getId());
 			boolean bend = j != null && j.getOffset().lengthSquared() >= 1e-8f;
 			if (!bend && !(turned && b.isRoot())) continue;
@@ -200,6 +207,20 @@ public final class CpmHooks {
 			Q.getEulerAnglesZYX(V);
 			c.setRotation(true, wrap(V.x - cur.x), wrap(V.y - cur.y), wrap(V.z - cur.z));
 		}
+	}
+
+	/**
+	 * A detail follows its host, which may be on another branch: moves as well as turns its element.
+	 */
+	private static void follow(Bone b, ModelDefinition def) {
+		RenderedCube c = def.getElementById(b.getId());
+		if (c == null) return;
+		Matrix4f local = b.getParent().deformed().invert(new Matrix4f()).mul(b.deformed());
+		local.getTranslation(V).mul(16f);
+		c.setPosition(true, V.x - c.pos.x, V.y - c.pos.y, V.z - c.pos.z);
+		local.getNormalizedRotation(Q).getEulerAnglesZYX(V);
+		Rotation cur = c.rotation;
+		c.setRotation(true, wrap(V.x - cur.x), wrap(V.y - cur.y), wrap(V.z - cur.z));
 	}
 
 	private static float wrap(float a) {

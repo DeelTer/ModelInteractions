@@ -138,6 +138,10 @@ class ModelFileClassificationTest {
 		dump.append(counts);
 		System.out.println(dump);
 		assertTrue(bones.size() > 6, "only roots found");
+		PartClassifier.glueDetails(bones, bones);
+		System.out.println(name + " details: follow=" + bones.stream().filter(b -> b.getHost() != null).count()
+				+ " movable before=" + (bones.size() - counts.getOrDefault(PartType.STATIC, 0))
+				+ " after=" + bones.stream().filter(b -> b.getType().isGrabbable()).count());
 		int ears = counts.getOrDefault(PartType.EAR, 0), tails = counts.getOrDefault(PartType.TAIL, 0);
 		switch (name) {
 			case "Rana" -> {

@@ -327,6 +327,12 @@ public class PlayerRig {
 			Matrix4f parent = b.getParent() == null ? new Matrix4f() : b.getParent().deformed();
 			parent.mul(local, b.deformed());
 		}
+		// details go where their host went; nothing is attached to them, so nothing else depends on this
+		Matrix4f moved = new Matrix4f();
+		for (Bone b : bones.values()) {
+			if (b.getHost() == null) continue;
+			b.getHost().deformed().mul(b.getHost().model().invert(moved), moved).mul(b.model(), b.deformed());
+		}
 	}
 
 	/**

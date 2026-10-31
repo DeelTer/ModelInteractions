@@ -4,12 +4,21 @@ import dev.deelter.modelinteractions.physics.PartType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Guesses what an element is from its geometry, because exported CPM models carry no
  * element names. Works in the frame of the vanilla root part (pixels, y down):
  * head box x[-4,4] y[-8,0] z[-4,4]; body box x[-4,4] y[0,12] z[-2,2]. The player faces -Z.
  */
 public final class PartClassifier {
+	/**
+	 * Longest side of a micro detail, and how close it must be to count as sitting on something, px.
+	 */
+	private static final float DETAIL_PX = 2.5f, CONTACT_PX = 0.3f;
+
 	private PartClassifier() {
 	}
 
@@ -57,6 +66,69 @@ public final class PartClassifier {
 					? PartType.STATIC : PartType.ACCESSORY;
 			default -> PartType.ACCESSORY;
 		};
+	}
+
+	/**
+	 * Micro details must not come off what they sit on. They stop being parts of their own: one on a
+	 * movable element follows it, one on anything else or on a long lever (a tiny box far from its
+	 * pivot, which a small turn throws far away) stays rigid. {@code guessed}: bones typed by
+	 * geometry; a type someone picked is left alone. Needs rest frames and types.
+	 */
+	public static void glueDetails(Collection<Bone> bones, Collection<Bone> guessed) {
+		Set<Bone> parents = new HashSet<>();
+		for (Bone b : bones) if (b.getParent() != null) parents.add(b.getParent());
+		for (Bone b : guessed) {
+			if (parents.contains(b) || !isDetail(b)) continue;
+			Bone host = null;
+			boolean touches = false;
+			for (Bone o : bones) {
+				if (o == b || isDetail(o) || o.getRegion() != b.getRegion() || !isTouching(b, o)) continue;
+				touches = true;
+				if (o.getType().isGrabbable() && (host == null || size(o) > size(host))) host = o;
+			}
+			if (!touches && b.getLengthPx() < size(b) * 3f) continue;
+			b.setType(PartType.STATIC);
+			if (host != null && !isAncestor(host, b)) b.setHost(host);
+		}
+	}
+
+	private static boolean isDetail(Bone b) {
+		float s = size(b);
+		return !b.isRoot() && s > 0 && s <= DETAIL_PX;
+	}
+
+	private static float size(Bone b) {
+		Vector3f e = new Vector3f(b.getBoxMax()).sub(b.getBoxMin()).mul(16f);
+		return Math.max(e.x, Math.max(e.y, e.z));
+	}
+
+	private static boolean isAncestor(Bone a, Bone of) {
+		for (Bone p = of.getParent(); p != null; p = p.getParent()) if (p == a) return true;
+		return false;
+	}
+
+	private static boolean isTouching(Bone a, Bone b) {
+		Vector3f minA = new Vector3f(), maxA = new Vector3f(), minB = new Vector3f(), maxB = new Vector3f();
+		modelBox(a, minA, maxA);
+		modelBox(b, minB, maxB);
+		float gap = CONTACT_PX / 16f;
+		return minA.x <= maxB.x + gap && minB.x <= maxA.x + gap
+				&& minA.y <= maxB.y + gap && minB.y <= maxA.y + gap
+				&& minA.z <= maxB.z + gap && minB.z <= maxA.z + gap;
+	}
+
+	private static void modelBox(Bone b, Vector3f min, Vector3f max) {
+		min.set(Float.MAX_VALUE);
+		max.set(-Float.MAX_VALUE);
+		Vector3f p = new Vector3f();
+		for (int i = 0; i < 8; i++) {
+			p.set((i & 1) == 0 ? b.getBoxMin().x : b.getBoxMax().x,
+					(i & 2) == 0 ? b.getBoxMin().y : b.getBoxMax().y,
+					(i & 4) == 0 ? b.getBoxMin().z : b.getBoxMax().z);
+			b.model().transformPosition(p);
+			min.min(p);
+			max.max(p);
+		}
 	}
 
 	private static PartType classifyHead(Vector3f c, Vector3f e, Vector3f min, Vector3f max, boolean flat, boolean elongated) {
