@@ -31,6 +31,7 @@ final class Carrying implements Listener {
 	 * Hands "needed" for something that may never be lifted from the ground.
 	 */
 	private static final int NEVER = 99;
+	private static final long BREAK_FREE_MS = 1000;
 	/**
 	 * Slack of a hand on the ground, blocks: just enough to soak up ping. Beyond it the held one is pulled along.
 	 */
@@ -49,6 +50,8 @@ final class Carrying implements Listener {
 	 */
 	private final Map<UUID, Long> restoreFlight = new HashMap<>();
 	private final Map<UUID, Long> lastThrow = new HashMap<>();
+	/** Players -> when they last hit or were hit by something. */
+	private final Map<UUID, Long> lastCombat = new HashMap<>();
 	private Rules rules;
 
 	Carrying(InteractionsPlugin plugin, Rules rules) {
@@ -144,7 +147,28 @@ final class Carrying implements Listener {
 	/**
 	 * Hands needed to lift {@code t}, or 0 when {@code sender} may not take hold of it at all.
 	 */
+	/**
+	 * Holding must not be a way out of a fight: a mob that hunts someone can't be held (by the
+	 * "hostile" rule), nor a player who is in combat.
+	 */
+	private boolean tooDangerous(Entity t, long now) {
+		if (t instanceof Player) {
+			Long last = lastCombat.get(t.getUniqueId());
+			return last != null && now - last < rules.combatLockMs();
+		}
+		return switch (rules.hostile()) {
+			case "all" -> false;
+			case "none" -> t instanceof org.bukkit.entity.Monster || hunting(t);
+			default -> hunting(t);
+		};
+	}
+
+	private static boolean hunting(Entity t) {
+		return t instanceof org.bukkit.entity.Mob m && m.getTarget() != null;
+	}
+
 	private int mayCarry(Player sender, Entity t, Session targetSession) {
+		if (tooDangerous(t, System.currentTimeMillis())) return 0;
 		if (!(t instanceof LivingEntity) || t == sender || t.isInsideVehicle() || !t.getPassengers().isEmpty())
 			return 0;
 		double vol = t.getWidth() * t.getWidth() * t.getHeight();
@@ -168,6 +192,7 @@ final class Carrying implements Listener {
 	 * Pulled along on the ground by a hand: players who allow it, mobs by the server's rules.
 	 */
 	private boolean mayDrag(Player sender, Entity t, Session targetSession) {
+		if (tooDangerous(t, System.currentTimeMillis())) return false;
 		if (!(t instanceof LivingEntity) || t == sender || t.isInsideVehicle()) return false;
 		if (t instanceof Player) {
 			return targetSession != null && targetSession.perm != null
@@ -211,6 +236,15 @@ final class Carrying implements Listener {
 					h.group.leave(who);
 				}
 			}
+			// turned hostile or got into a fight in someone's hands: it breaks free after a moment
+			if (tooDangerous(h.entity, now)) {
+				if (h.angrySince == 0) h.angrySince = now;
+				if (h.entity instanceof Player || now - h.angrySince >= BREAK_FREE_MS) {
+					for (UUID who : h.group.holders()) h.group.leave(who);
+				}
+			} else {
+				h.angrySince = 0;
+			}
 			// a mob that may only be dragged isn't caught either: only players who allow being held
 			h.group.setGrounded(grounded(h.entity) || !h.canLift && !(h.entity instanceof Player));
 			switch (h.group.update(now)) {
@@ -239,6 +273,7 @@ final class Carrying implements Listener {
 		});
 		softLanding.values().removeIf(t -> now > t);
 		lastThrow.values().removeIf(t -> now - t > 60_000);
+		lastCombat.values().removeIf(t -> now - t > 60_000);
 	}
 
 	/**
@@ -324,6 +359,15 @@ final class Carrying implements Listener {
 		plugin.send(p, Wire.encodeCarry(out, carrier != null ? carrier : p.getUniqueId()));
 	}
 
+	@EventHandler(ignoreCancelled = true)
+	public void onCombat(org.bukkit.event.entity.EntityDamageByEntityEvent e) {
+		long now = System.currentTimeMillis();
+		if (e.getEntity() instanceof Player victim) lastCombat.put(victim.getUniqueId(), now);
+		Entity damager = e.getDamager();
+		if (damager instanceof org.bukkit.entity.Projectile p && p.getShooter() instanceof Entity shooter) damager = shooter;
+		if (damager instanceof Player attacker) lastCombat.put(attacker.getUniqueId(), now);
+	}
+
 	@EventHandler
 	public void onFall(EntityDamageEvent e) {
 		if (e.getCause() != EntityDamageEvent.DamageCause.FALL) return;
@@ -376,7 +420,7 @@ final class Carrying implements Listener {
 
 	record Rules(boolean mobs, boolean dragMobs, double maxWidth, double maxHeight, double groupMaxWidth,
 	             double groupMaxHeight,
-	             double holdDistance, double maxThrow, long throwCooldownMs, boolean noFallDamage, Set<String> deny) {
+	             double holdDistance, double maxThrow, long throwCooldownMs, boolean noFallDamage, Set<String> deny, String hostile, long combatLockMs) {
 		static Rules read(ConfigurationSection c) {
 			double w = Math.max(0.1, c.getDouble("max-width", 1.0)), h = Math.max(0.1, c.getDouble("max-height", 1.6));
 			return new Rules(c.getBoolean("mobs", true), c.getBoolean("drag-mobs", true), w, h,
@@ -386,7 +430,9 @@ final class Carrying implements Listener {
 					Math.max(0, Math.min(Wire.MAX_THROW, c.getDouble("max-throw-speed", 1.6))),
 					Math.max(0, c.getLong("throw-cooldown-ms", 1000)),
 					c.getBoolean("no-fall-damage", true),
-					c.getStringList("deny").stream().map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet()));
+					c.getStringList("deny").stream().map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet()),
+					c.getString("hostile", "calm").toLowerCase(Locale.ROOT),
+					Math.max(0, c.getLong("combat-lock-ms", 5000)));
 		}
 
 		double soloVolume() {
@@ -401,6 +447,7 @@ final class Carrying implements Listener {
 		 * May be lifted at all, or only pulled along on the ground.
 		 */
 		final boolean canLift, canDrag;
+		long angrySince;
 		boolean hadGravity, hadFlight;
 		boolean wasCollidable = true, collisionOff;
 

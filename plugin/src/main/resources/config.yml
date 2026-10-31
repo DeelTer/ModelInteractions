@@ -55,6 +55,11 @@ carry:
   throw-cooldown-ms: 1000
   # what was carried or thrown takes no fall damage for 6 seconds
   no-fall-damage: true
+  # hostile mobs. calm: only while they hunt nobody, and one that starts to in your hands breaks free after
+  # a second. none: never, nor any monster. all: anything goes
+  hostile: calm
+  # a player who hit or was hit can't be lifted or dragged for this long, and breaks free if held
+  combat-lock-ms: 5000
   # entity types that can't be lifted
   deny:
     - villager

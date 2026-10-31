@@ -415,6 +415,9 @@ public final class CarryClient {
 			ServerLevel sl = server.getLevel(dim);
 			Entity e = sl == null ? null : sl.getEntity(c.target());
 			if (e == null) return;
+			// a mob hunting someone won't be held: without moves the hold times out and it drops
+			boolean holding = c.sub() != Wire.CARRY_THROW && c.sub() != Wire.CARRY_DROP;
+			if (holding && e instanceof net.minecraft.world.entity.Mob m && m.getTarget() != null) return;
 			Vec3 goal = new Vec3(c.x(), c.y(), c.z());
 			switch (c.sub()) {
 				case Wire.CARRY_START, Wire.CARRY_MOVE -> {
