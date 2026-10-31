@@ -41,7 +41,7 @@ public final class DummyManager {
 	}
 
 	/**
-	 * So there is a place to see for your own *.cpmmodel files.
+	 * So there is a place to see for your own model files.
 	 */
 	public static void createUserDir() {
 		try {
@@ -56,7 +56,7 @@ public final class DummyManager {
 	}
 
 	/**
-	 * Builtin names plus *.cpmmodel files from the config folder.
+	 * Builtin names plus *.cpmmodel and *.cpmproject files from the config folder.
 	 */
 	public static List<String> availableModels() {
 		TreeSet<String> names = new TreeSet<>(CPM ? BUILTIN : List.of("steve"));
@@ -64,8 +64,8 @@ public final class DummyManager {
 		if (CPM && Files.isDirectory(dir)) {
 			try (Stream<Path> s = Files.list(dir)) {
 				s.map(p -> p.getFileName().toString())
-						.filter(n -> n.toLowerCase(Locale.ROOT).endsWith(".cpmmodel"))
-						.forEach(n -> names.add(n.substring(0, n.length() - ".cpmmodel".length())));
+						.filter(n -> n.toLowerCase(Locale.ROOT).endsWith(".cpmmodel") || n.toLowerCase(Locale.ROOT).endsWith(".cpmproject"))
+						.forEach(n -> names.add(n.substring(0, n.lastIndexOf('.'))));
 			} catch (IOException ignored) {
 			}
 		}
@@ -87,6 +87,9 @@ public final class DummyManager {
 	private static InputStream open(String model) throws IOException {
 		Path file = userDir().resolve(model + ".cpmmodel");
 		if (Files.isRegularFile(file)) return Files.newInputStream(file);
+		Path project = userDir().resolve(model + ".cpmproject");
+		if (Files.isRegularFile(project))
+			return new java.io.ByteArrayInputStream(dev.deelter.modelinteractions.cpm.CpmProjects.export(project));
 		InputStream in = DummyManager.class.getResourceAsStream("/assets/modelinteractions/dummies/" + model.toLowerCase(Locale.ROOT) + ".cpmmodel");
 		if (in == null) throw new IOException("Unknown model '" + model + "'");
 		return in;
