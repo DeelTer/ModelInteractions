@@ -345,6 +345,7 @@ final class Carrying implements Listener {
 			p.setAllowFlight(false);
 		}
 		if (self != null) {
+			setCollision(self, true);
 			// they are gone from under the holders; nothing to put back
 			held.remove(player);
 		}
