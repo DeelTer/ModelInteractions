@@ -16,6 +16,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.network.chat.Component;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -818,7 +819,7 @@ public final class InteractionManager {
 		}
 		boolean pin = keepsShape(g.getTarget(), self, keep);
 		if (keep && !pin && Minecraft.getInstance().player != null)
-			Minecraft.getInstance().player.sendOverlayMessage(net.minecraft.network.chat.Component.translatable("modelinteractions.msg.keep_denied"));
+			Minecraft.getInstance().player.sendOverlayMessage(Component.translatable("modelinteractions.msg.keep_denied"));
 		if (pin) pinChain(g);
 		else if (unpinChain(g) && g.getTarget().equals(self)) schedulePosePublish();
 		send(g.getTarget(), Protocol.release(g.getTarget(), g.getBoneId(), hand, pin));
