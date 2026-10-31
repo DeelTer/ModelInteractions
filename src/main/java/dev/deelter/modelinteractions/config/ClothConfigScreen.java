@@ -31,7 +31,6 @@ public final class ClothConfigScreen {
 		general.addEntry(e.startBooleanToggle(t("mobs"), c.isMobs()).setDefaultValue(d.isMobs()).setSaveConsumer(c::setMobs).build());
 		general.addEntry(e.startBooleanToggle(t("localWhenDenied"), c.isLocalWhenDenied()).setDefaultValue(d.isLocalWhenDenied()).setTooltip(t("localWhenDenied.tooltip")).setSaveConsumer(c::setLocalWhenDenied).build());
 		general.addEntry(e.startBooleanToggle(t("deformLayers"), c.isDeformLayers()).setDefaultValue(d.isDeformLayers()).setSaveConsumer(c::setDeformLayers).build());
-		general.addEntry(e.startBooleanToggle(t("hints"), c.isHints()).setDefaultValue(d.isHints()).setSaveConsumer(c::setHints).build());
 		general.addEntry(e.startBooleanToggle(t("sounds"), c.isSounds()).setDefaultValue(d.isSounds()).setSaveConsumer(c::setSounds).build());
 		general.addEntry(e.startBooleanToggle(t("vrGestures"), c.isVrGestures()).setDefaultValue(d.isVrGestures()).setTooltip(t("vrGestures.tooltip")).setSaveConsumer(c::setVrGestures).build());
 		general.addEntry(e.startBooleanToggle(t("carryHints"), c.isCarryHints()).setDefaultValue(d.isCarryHints()).setSaveConsumer(c::setCarryHints).build());

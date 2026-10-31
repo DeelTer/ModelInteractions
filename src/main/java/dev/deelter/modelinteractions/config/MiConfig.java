@@ -47,9 +47,9 @@ public class MiConfig {
 	 */
 	private boolean localWhenDenied = true;
 	/**
-	 * Show what the mouse does the first few times you look at a model.
+	 * The one-time hint about what the mouse does has been shown.
 	 */
-	private boolean hints = false;
+	private boolean hintSeen = false;
 	/**
 	 * A light tap in the controller whenever a hand comes within reach of a part.
 	 */

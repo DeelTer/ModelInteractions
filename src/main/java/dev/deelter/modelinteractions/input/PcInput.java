@@ -52,9 +52,6 @@ public final class PcInput {
 	 */
 	private static float aimYaw, aimPitch;
 	private static boolean aiming;
-	private static UUID hintedRig;
-	private static long hintAt;
-	private static int hintsShown;
 	private static long lastKeepToggle;
 	private static long lastFrameNanos;
 
@@ -237,21 +234,17 @@ public final class PcInput {
 	}
 
 	/**
-	 * The first few times the crosshair lands on a model with an empty hand, say what the
+	 * The first time ever the crosshair lands on a model with an empty hand, say what the
 	 * mouse does there. Nothing else on screen tells that a model can be grabbed.
 	 */
 	private static void hint(Minecraft mc, InteractionManager mgr) {
-		if (!MiConfig.get().isHints() || hintsShown >= 5 || mgr.localGrab(HAND) != null || MiConfig.get().isDebugOverlay())
+		if (MiConfig.get().isHintSeen() || mgr.localGrab(HAND) != null || MiConfig.get().isDebugOverlay())
 			return;
 		if (!mc.player.getMainHandItem().isEmpty() || mc.gui.screen() != null) return;
 		PartHit hit = pick(mc, 1f);
-		UUID rig = hit == null ? null : hit.rig().getUuid();
-		long now = System.currentTimeMillis();
-		if (rig == null || rig.equals(hintedRig) || now - hintAt < 10_000 || !mgr.canGrab(hit) || !useKeyMayGrab(mc, hit))
-			return;
-		hintedRig = rig;
-		hintAt = now;
-		hintsShown++;
+		if (hit == null || !mgr.canGrab(hit) || !useKeyMayGrab(mc, hit)) return;
+		MiConfig.get().setHintSeen(true);
+		MiConfig.save();
 		mc.player.sendOverlayMessage(Component.translatable("modelinteractions.msg.hint"));
 	}
 
