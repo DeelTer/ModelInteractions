@@ -32,6 +32,11 @@ public class Grab {
 	/**
 	 * The owner doesn't allow it (or nobody else would see it): simulated here, never sent.
 	 */
+	/**
+	 * Hash of the model the bone number refers to, 0 if unknown. Someone seeing another model ignores the grab.
+	 */
+	@Setter
+	private int modelHash;
 	@Setter
 	private boolean privateOnly;
 	/**

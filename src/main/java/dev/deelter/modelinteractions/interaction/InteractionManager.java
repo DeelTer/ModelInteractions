@@ -308,7 +308,11 @@ public final class InteractionManager {
 	}
 
 	private void send(UUID target, Wire.Act act) {
-		if (!localOnly.containsKey(target)) net.sendAction(act);
+		if (localOnly.containsKey(target)) return;
+		// bone numbers only mean something on the model we see; the torso is the same on all
+		PlayerRig rig = rigs.getIfPresent(target);
+		boolean byBone = act.bone() != Wire.BODY_BONE && act.op() != Wire.OP_RELEASE;
+		net.sendAction(rig != null && byBone ? act.withModel(rig.getModelKey().hashCode()) : act);
 	}
 
 	/**
@@ -477,8 +481,16 @@ public final class InteractionManager {
 
 	// ------------------------------------------------------------------ permissions
 
+	/**
+	 * Does a bone number from someone who sees model {@code hash} mean the same part on what we see?
+	 */
+	private static boolean sameModel(PlayerRig rig, int hash) {
+		return hash == 0 || rig.getModelKey().hashCode() == hash;
+	}
+
 	private void applyGrab(PlayerRig rig, Grab g, float dt) {
 		if (!g.isPrivateOnly() && !allowed(g.getTarget(), g.getKey().grabber(), kindOf(rig, g.getBoneId()))) return;
+		if (!sameModel(rig, g.getModelHash())) return;
 		rig.setTouchedNanos(System.nanoTime());
 		if (g.isLocal()) g.getSmoothModel().set(g.getGoalModel());
 		else g.getSmoothModel().lerp(g.getGoalModel(), 1f - (float) Math.exp(-dt * 18f));
@@ -906,7 +918,7 @@ public final class InteractionManager {
 
 	private void pinChain(Grab g) {
 		PlayerRig rig = rigs.getIfPresent(g.getTarget());
-		if (rig == null) return;
+		if (rig == null || !sameModel(rig, g.getModelHash())) return;
 		if (g.getBoneId() == Wire.BODY_BONE) {
 			rig.bodyJoint().pinCurrent();
 			return;
@@ -926,7 +938,7 @@ public final class InteractionManager {
 	 */
 	private boolean unpinChain(Grab g) {
 		PlayerRig rig = rigs.getIfPresent(g.getTarget());
-		if (rig == null) return false;
+		if (rig == null || !sameModel(rig, g.getModelHash())) return false;
 		boolean any = false;
 		if (g.getBoneId() == Wire.BODY_BONE) {
 			SpringJoint b = rig.getBodyJoint();
@@ -1002,7 +1014,9 @@ public final class InteractionManager {
 				// applyGrab checks them every frame
 				PlayerRig rig = rigs.getIfPresent(target);
 				Vector3f p = Protocol.vec(act.point(), new Vector3f());
-				grabs.put(key, new Grab(key, target, act.bone(), Protocol.vec(act.anchor(), new Vector3f()), p, false));
+				Grab fresh = new Grab(key, target, act.bone(), Protocol.vec(act.anchor(), new Vector3f()), p, false);
+				fresh.setModelHash(act.model());
+				grabs.put(key, fresh);
 				if (toMe) playOwn(MiConfig.get().getReactions().getGrabbedAnimation());
 			}
 			case Wire.OP_MOVE -> {
@@ -1010,7 +1024,9 @@ public final class InteractionManager {
 				if (g == null || !g.getTarget().equals(target) || g.getBoneId() != act.bone()) {
 					// we came into range after the grab began: every move says all we need to join in
 					Vector3f p = Protocol.vec(act.point(), new Vector3f());
-					grabs.put(key, new Grab(key, target, act.bone(), Protocol.vec(act.anchor(), new Vector3f()), p, false));
+					Grab joined = new Grab(key, target, act.bone(), Protocol.vec(act.anchor(), new Vector3f()), p, false);
+					joined.setModelHash(act.model());
+					grabs.put(key, joined);
 					return;
 				}
 				Protocol.vec(act.point(), g.getGoalModel());
@@ -1037,7 +1053,7 @@ public final class InteractionManager {
 			case Wire.OP_PUSH -> {
 				PlayerRig rig = rigs.getIfPresent(target);
 				Bone b = rig == null ? null : rig.bone(act.bone());
-				if (b == null || !rig.isWorldValid()) return;
+				if (b == null || !rig.isWorldValid() || !sameModel(rig, act.model())) return;
 				Bone moves = b.movable();
 				// same rule as the sender used: the part that really moves, or the torso
 				int id = moves == null || moves.isRoot() && moves.getType() == PartType.STATIC ? Wire.BODY_BONE : moves.getId();

@@ -12,7 +12,7 @@ import java.util.*;
  * name their sender: the server knows who sent them and stamps that into what it relays.
  *
  * <pre>
- * ACT   c2s: op u8, target uuid, bone i32, hand u8, flags u8, anchor 3*f32, point 3*f32
+ * ACT   c2s: op u8, target uuid, bone i32, hand u8, flags u8, model i32, anchor 3*f32, point 3*f32
  *       s2c: sender uuid, then the same
  * STATE c2s: state u8, len u16, body
  *       s2c: state u8, owner uuid, len u16, body
@@ -30,7 +30,7 @@ import java.util.*;
  * well formed, size-bounded data.
  */
 public final class Wire {
-	public static final int VERSION = 2;
+	public static final int VERSION = 3;
 	public static final String CHANNEL = "modelinteractions:main";
 
 	public static final int K_ACT = 1, K_STATE = 2, K_REQ = 3, K_HELLO = 4, K_CARRY = 5, K_LOOK = 6, K_RESET = 7;
@@ -76,7 +76,7 @@ public final class Wire {
 	 * Model points are in blocks; no model is bigger than this.
 	 */
 	public static final float MAX_COORD = 16f;
-	public static final int ACT_C2S_SIZE = 2 + 1 + 16 + 4 + 1 + 1 + 12 + 12;
+	public static final int ACT_C2S_SIZE = 2 + 1 + 16 + 4 + 1 + 1 + 4 + 12 + 12;
 	public static final int ACT_S2C_SIZE = ACT_C2S_SIZE + 16;
 	public static final int MAX_STATE_BODY = 4096;
 	public static final int MAX_NAMES = 64, MAX_NAME_LEN = 16, MAX_POSE = 256, MAX_TYPES = 512, MAX_KEY_LEN = 64;
@@ -100,6 +100,7 @@ public final class Wire {
 			out.writeInt(a.bone());
 			out.writeByte(a.hand());
 			out.writeByte(a.keep() ? FLAG_KEEP : 0);
+			out.writeInt(a.model());
 			for (float f : a.anchor()) out.writeFloat(f);
 			for (float f : a.point()) out.writeFloat(f);
 		} catch (IOException e) {
@@ -121,8 +122,9 @@ public final class Wire {
 		int hand = in.readUnsignedByte();
 		if (hand > MAX_HAND) throw new BadMessage("hand");
 		int flags = in.readUnsignedByte();
+		int model = in.readInt();
 		float[] a = readVec(in), p = readVec(in);
-		return new Act(op, target, bone, hand, (flags & FLAG_KEEP) != 0, a, p);
+		return new Act(op, target, bone, hand, (flags & FLAG_KEEP) != 0, model, a, p);
 	}
 
 	private static float[] readVec(DataInputStream in) throws IOException {
@@ -447,7 +449,18 @@ public final class Wire {
 		}
 	}
 
-	public record Act(int op, UUID target, int bone, int hand, boolean keep, float[] anchor, float[] point) {
+	public record Act(int op, UUID target, int bone, int hand, boolean keep, int model, float[] anchor, float[] point) {
+		public Act(int op, UUID target, int bone, int hand, boolean keep, float[] anchor, float[] point) {
+			this(op, target, bone, hand, keep, 0, anchor, point);
+		}
+
+		/**
+		 * {@code model}: hash of the model key the bone number refers to; 0 when it doesn't matter.
+		 */
+		public Act withModel(int hash) {
+			return new Act(op, target, bone, hand, keep, hash, anchor, point);
+		}
+
 		public Act {
 			anchor = anchor == null ? new float[3] : anchor;
 			point = point == null ? new float[3] : point;
