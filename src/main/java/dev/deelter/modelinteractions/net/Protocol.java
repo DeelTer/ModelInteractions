@@ -21,8 +21,8 @@ public final class Protocol {
 		return new Wire.Act(Wire.OP_GRAB, target, bone, hand, false, arr(anchor), arr(point));
 	}
 
-	public static Wire.Act move(UUID target, int bone, int hand, Vector3f point) {
-		return new Wire.Act(Wire.OP_MOVE, target, bone, hand, false, null, arr(point));
+	public static Wire.Act move(UUID target, int bone, int hand, Vector3f anchor, Vector3f point) {
+		return new Wire.Act(Wire.OP_MOVE, target, bone, hand, false, arr(anchor), arr(point));
 	}
 
 	public static Wire.Act release(UUID target, int bone, int hand, boolean keep) {

@@ -880,7 +880,7 @@ public final class InteractionManager {
 			if (still && now - g.getLastSentNanos() < KEEPALIVE) continue;
 			g.setLastSentNanos(now);
 			g.getLastSent().set(g.getGoalModel());
-			send(g.getTarget(), Protocol.move(g.getTarget(), g.getBoneId(), g.getKey().hand(), g.getGoalModel()));
+			send(g.getTarget(), Protocol.move(g.getTarget(), g.getBoneId(), g.getKey().hand(), g.getAnchorLocal(), g.getGoalModel()));
 		}
 	}
 
@@ -1000,7 +1000,12 @@ public final class InteractionManager {
 			}
 			case Wire.OP_MOVE -> {
 				Grab g = grabs.get(key);
-				if (g == null || !g.getTarget().equals(target) || g.getBoneId() != act.bone()) return;
+				if (g == null || !g.getTarget().equals(target) || g.getBoneId() != act.bone()) {
+					// we came into range after the grab began: every move says all we need to join in
+					Vector3f p = Protocol.vec(act.point(), new Vector3f());
+					grabs.put(key, new Grab(key, target, act.bone(), Protocol.vec(act.anchor(), new Vector3f()), p, false));
+					return;
+				}
 				Protocol.vec(act.point(), g.getGoalModel());
 				g.setLastUpdateNanos(System.nanoTime());
 			}

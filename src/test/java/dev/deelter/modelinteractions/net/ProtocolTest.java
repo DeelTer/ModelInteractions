@@ -48,7 +48,7 @@ class ProtocolTest {
 
 	@Test
 	void outOfRangePointsAreClampedBeforeSending() {
-		Wire.Act a = Protocol.move(T, 1, 0, new Vector3f(1e9f, Float.NaN, -1e9f));
+		Wire.Act a = Protocol.move(T, 1, 0, new Vector3f(), new Vector3f(1e9f, Float.NaN, -1e9f));
 		assertArrayEquals(new float[]{Wire.MAX_COORD, 0, -Wire.MAX_COORD}, a.point());
 	}
 
@@ -63,7 +63,7 @@ class ProtocolTest {
 		h[2 + 1 + 16 + 4] = 7;
 		assertThrows(IOException.class, () -> readAct(h));
 		// NaN coordinate written raw
-		byte[] n = Wire.encodeAct(Protocol.move(T, 1, 0, new Vector3f()), null);
+		byte[] n = Wire.encodeAct(Protocol.move(T, 1, 0, new Vector3f(), new Vector3f()), null);
 		int nanBits = Float.floatToIntBits(Float.NaN);
 		int off = Wire.ACT_C2S_SIZE - 4;
 		n[off] = (byte) (nanBits >>> 24);
