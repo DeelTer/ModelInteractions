@@ -54,6 +54,7 @@ public class ModelInteractionsClient implements ClientModInitializer {
 		CarryClient.register();
 		ConfigListeners.add(mgr::onConfigChanged);
 		DebugCommands.register();
+		DummyManager.createUserDir();
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> {
 			publishRetry = 0;
 			RelayNet.reset();

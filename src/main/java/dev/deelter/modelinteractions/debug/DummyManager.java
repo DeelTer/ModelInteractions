@@ -40,6 +40,17 @@ public final class DummyManager {
 	private DummyManager() {
 	}
 
+	/**
+	 * So there is a place to see for your own *.cpmmodel files.
+	 */
+	public static void createUserDir() {
+		try {
+			Files.createDirectories(userDir());
+		} catch (IOException e) {
+			ModelInteractions.LOG.warn("Could not create {}", userDir(), e);
+		}
+	}
+
 	public static Path userDir() {
 		return FabricLoader.getInstance().getConfigDir().resolve(ModelInteractions.MOD_ID).resolve("dummies");
 	}
