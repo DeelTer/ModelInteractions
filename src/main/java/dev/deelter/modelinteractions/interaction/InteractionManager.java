@@ -268,6 +268,13 @@ public final class InteractionManager {
 		poseAnchor = null;
 	}
 
+	/**
+	 * Another world: nothing we or others held here means anything any more.
+	 */
+	public void dropAllGrabs() {
+		grabs.clear();
+	}
+
 	public void registerLocalDummy(UUID uuid) {
 		localOnly.put(uuid, PermissionState.ALL);
 		rigs.invalidate(uuid);
@@ -369,7 +376,7 @@ public final class InteractionManager {
 				continue;
 			}
 			PlayerRig rig = rigs.getIfPresent(g.getTarget());
-			if (g.isLocal() && rig == null) {
+			if (g.isLocal() && (rig == null || entityOf(level, rig) == null)) {
 				// target left or changed model: let go instead of holding a ghost
 				it.remove();
 				send(g.getTarget(), Protocol.release(g.getTarget(), g.getBoneId(), g.getKey().hand(), false));

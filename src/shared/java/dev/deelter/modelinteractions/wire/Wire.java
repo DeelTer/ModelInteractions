@@ -33,7 +33,7 @@ public final class Wire {
 	public static final int VERSION = 2;
 	public static final String CHANNEL = "modelinteractions:main";
 
-	public static final int K_ACT = 1, K_STATE = 2, K_REQ = 3, K_HELLO = 4, K_CARRY = 5, K_LOOK = 6;
+	public static final int K_ACT = 1, K_STATE = 2, K_REQ = 3, K_HELLO = 4, K_CARRY = 5, K_LOOK = 6, K_RESET = 7;
 	/**
 	 * TETHER (s2c): held on the ground; walk towards pos, can't walk away from it.
 	 */
@@ -339,6 +339,13 @@ public final class Wire {
 	}
 
 	// pose ---------------------------------------------------------------
+
+	/**
+	 * s2c: you are in another world now, forget every grab.
+	 */
+	public static byte[] encodeReset() {
+		return new byte[]{(byte) VERSION, (byte) K_RESET};
+	}
 
 	public static byte[] encodeReq(UUID target) {
 		return write(out -> {

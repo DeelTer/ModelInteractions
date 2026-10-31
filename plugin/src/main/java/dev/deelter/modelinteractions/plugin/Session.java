@@ -48,6 +48,14 @@ final class Session {
 		grabs[hand] = null;
 	}
 
+	/**
+	 * The grab a hand holds, as a release message for everyone who saw it; null if it holds nothing.
+	 */
+	Wire.Act releaseOf(int hand) {
+		Held h = grabs[hand];
+		return h == null ? null : new Wire.Act(Wire.OP_RELEASE, h.target(), h.bone(), hand, false, null, null);
+	}
+
 	void dropGrabs() {
 		for (int i = 0; i < grabs.length; i++) grabs[i] = null;
 	}

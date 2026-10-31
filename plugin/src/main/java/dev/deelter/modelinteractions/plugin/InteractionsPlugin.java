@@ -131,6 +131,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 
 	@EventHandler
 	public void onQuit(PlayerQuitEvent e) {
+		letGoOfEverything(e.getPlayer());
 		sessions.remove(e.getPlayer().getUniqueId());
 		lastHello.remove(e.getPlayer().getUniqueId());
 		carrying.drop(e.getPlayer().getUniqueId());
@@ -139,7 +140,8 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	@EventHandler
 	public void onWorld(PlayerChangedWorldEvent e) {
 		Session s = sessions.get(e.getPlayer().getUniqueId());
-		if (s != null) s.dropGrabs();
+		letGoOfEverything(e.getPlayer());
+		if (s != null) send(e.getPlayer(), Wire.encodeReset());
 		carrying.drop(e.getPlayer().getUniqueId());
 	}
 
@@ -268,6 +270,19 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		byte[] msg = Wire.encodeLook(new Wire.Look(l.active(), tp.getUniqueId(), eye.getX(), eye.getY(), eye.getZ()), sender.getUniqueId());
 		// the target is near itself, so the relay reaches it too
 		relay(msg, tp.getLocation(), settings.range(), sender);
+	}
+
+	/**
+	 * Leaving: nobody should keep seeing this player's hands on anything.
+	 */
+	private void letGoOfEverything(Player p) {
+		Session s = sessions.get(p.getUniqueId());
+		if (s == null) return;
+		for (int hand = 0; hand <= Wire.MAX_HAND; hand++) {
+			Wire.Act release = s.releaseOf(hand);
+			if (release != null) relayRelease(p, release, getServer().getEntity(release.target()));
+		}
+		s.dropGrabs();
 	}
 
 	private void relayRelease(Player sender, Wire.Act act, Entity target) {

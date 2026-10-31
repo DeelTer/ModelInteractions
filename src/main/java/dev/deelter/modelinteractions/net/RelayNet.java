@@ -82,6 +82,10 @@ public final class RelayNet implements NetBridge {
 					ModelInteractions.LOG.info("Server relays interactions within {} blocks", range);
 					mgr.publishOwnPermissions();
 				}
+				case Wire.K_RESET -> {
+					mgr.dropAllGrabs();
+					CarryClient.reset();
+				}
 				case Wire.K_ACT -> {
 					UUID sender = Wire.readUuid(in);
 					mgr.handleAction(sender, Wire.readAct(in));
