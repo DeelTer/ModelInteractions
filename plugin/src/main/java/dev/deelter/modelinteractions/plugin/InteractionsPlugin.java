@@ -46,6 +46,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 
 	private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
 	private final Map<UUID, Long> lastHello = new ConcurrentHashMap<>();
+	private final java.util.Set<UUID> versionWarned = ConcurrentHashMap.newKeySet();
 	private Settings settings;
 	private Carrying carrying;
 
@@ -134,6 +135,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		letGoOfEverything(e.getPlayer());
 		sessions.remove(e.getPlayer().getUniqueId());
 		lastHello.remove(e.getPlayer().getUniqueId());
+		versionWarned.remove(e.getPlayer().getUniqueId());
 		carrying.drop(e.getPlayer().getUniqueId());
 	}
 
@@ -150,6 +152,14 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	@Override
 	public void onPluginMessageReceived(@NotNull String channel, @NotNull Player player, byte @NotNull [] message) {
 		if (!Wire.CHANNEL.equals(channel) || message.length > MAX_MESSAGE) return;
+		if (Wire.isOtherVersionHello(message)) {
+			if (versionWarned.add(player.getUniqueId())) {
+				getLogger().info(player.getName() + " has a Model Interactions mod with protocol " + message[0] + ", this plugin speaks " + Wire.VERSION);
+				player.sendMessage(net.kyori.adventure.text.Component.text("Model Interactions: your mod and this server's plugin are different versions, interactions won't sync. Update them to match."));
+			}
+			send(player, Wire.encodeHello((int) settings.range(), 0));
+			return;
+		}
 		// the client says hello once it is in the world (and again until we answer): only then can it hear us
 		if (message.length == 2 && message[0] == Wire.VERSION && message[1] == Wire.K_HELLO) {
 			Long last = lastHello.get(player.getUniqueId());

@@ -39,6 +39,7 @@ public final class RelayNet implements NetBridge {
 	@Getter
 	private static boolean adultAllowed;
 	private static int helloTicks, hellos;
+	private static boolean versionMismatch;
 
 	private RelayNet() {
 	}
@@ -48,7 +49,7 @@ public final class RelayNet implements NetBridge {
 	 * while we were still joining would be lost, so we ask once we can hear the answer.
 	 */
 	public static void tick() {
-		if (active || hellos >= HELLO_TRIES || !ClientPlayNetworking.canSend(Payload.TYPE)) return;
+		if (active || versionMismatch || hellos >= HELLO_TRIES || !ClientPlayNetworking.canSend(Payload.TYPE)) return;
 		if (helloTicks++ % HELLO_INTERVAL != 0) return;
 		hellos++;
 		ClientPlayNetworking.send(new Payload(Wire.encodeClientHello()));
@@ -63,11 +64,20 @@ public final class RelayNet implements NetBridge {
 	public static void reset() {
 		active = false;
 		helloTicks = 0;
+		versionMismatch = false;
 		hellos = 0;
 		adultAllowed = false;
 	}
 
 	private static void receive(byte[] data) {
+		if (Wire.isOtherVersionHello(data)) {
+			if (versionMismatch) return;
+			versionMismatch = true;
+			ModelInteractions.LOG.warn("The server's plugin speaks protocol {}, this mod {}: interactions won't sync", data[0], Wire.VERSION);
+			var player = net.minecraft.client.Minecraft.getInstance().player;
+			if (player != null) player.sendOverlayMessage(net.minecraft.network.chat.Component.translatable("modelinteractions.msg.version_mismatch"));
+			return;
+		}
 		try {
 			DataInputStream in = Wire.in(data);
 			InteractionManager mgr = InteractionManager.get();

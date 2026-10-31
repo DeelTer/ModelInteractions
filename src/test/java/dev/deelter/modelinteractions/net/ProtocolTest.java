@@ -86,6 +86,13 @@ class ProtocolTest {
 	}
 
 	@Test
+	void otherVersionsOfHelloAreRecognised() {
+		assertTrue(Wire.isOtherVersionHello(new byte[]{(byte) (Wire.VERSION + 1), Wire.K_HELLO}));
+		assertEquals(false, Wire.isOtherVersionHello(Wire.encodeClientHello()));
+		assertEquals(false, Wire.isOtherVersionHello(Wire.encodeReset()));
+	}
+
+	@Test
 	void permRoundTrip() throws IOException {
 		PermissionState s = new PermissionState(PermissionMode.WHITELIST,
 				InteractionKind.GRAB_EARS.bit() | InteractionKind.FREE_MODE.bit(), Set.of("bob", "alice"), Set.of("eve"));

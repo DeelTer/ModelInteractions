@@ -349,6 +349,13 @@ public final class Wire {
 		return new byte[]{(byte) VERSION, (byte) K_RESET};
 	}
 
+	/**
+	 * A hello in another version of this protocol: the one message every version can recognise.
+	 */
+	public static boolean isOtherVersionHello(byte[] data) {
+		return data.length >= 2 && data[1] == K_HELLO && data[0] != VERSION;
+	}
+
 	public static byte[] encodeReq(UUID target) {
 		return write(out -> {
 			out.writeByte(VERSION);
