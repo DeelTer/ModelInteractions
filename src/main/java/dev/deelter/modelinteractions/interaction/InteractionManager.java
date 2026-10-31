@@ -1152,8 +1152,6 @@ public final class InteractionManager {
 	}
 
 	private void onPet(UUID target, UUID actor) {
-		PlayerRig rig = rig(target);
-		hearts(rig, 2, 0.35);
 		if (target.equals(self())) playOwn(MiConfig.get().getReactions().getPetAnimation());
 	}
 

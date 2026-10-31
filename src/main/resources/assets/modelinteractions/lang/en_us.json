@@ -88,7 +88,7 @@
   "modelinteractions.msg.toy_stopped": "Device stopped",
   "modelinteractions.msg.toy_inactive": "Device is on, but this server doesn't allow it (adult-features) – nothing will be sent",
   "modelinteractions.config.vrGestures": "VR gestures: stroke to pet, arms around to hug",
-  "modelinteractions.config.vrGestures.tooltip": "Pets and hugs from hand movements alone, with hearts. Off: only grabbing and pushing",
+  "modelinteractions.config.vrGestures.tooltip": "Pets and hugs from hand movements alone, hugs with hearts. Off: only grabbing and pushing",
   "modelinteractions.config.carryHints": "Say why something can't be lifted",
   "modelinteractions.config.allow.dragMe": "Others may drag and hold me (by a hand)",
   "modelinteractions.config.allow.catchMe": "Others holding me catch me when I fall",
