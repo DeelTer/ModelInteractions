@@ -49,5 +49,4 @@ processResources {
 }
 
 jar {
-    destinationDirectory = rootProject.layout.buildDirectory.dir('libs')
 }
