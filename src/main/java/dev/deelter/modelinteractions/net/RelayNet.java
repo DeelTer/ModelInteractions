@@ -90,7 +90,7 @@ public final class RelayNet implements NetBridge {
 					adultAllowed = (flags & Wire.HELLO_ADULT) != 0;
 					active = true;
 					ModelInteractions.LOG.info("Server relays interactions within {} blocks", range);
-					mgr.publishOwnPermissions();
+					mgr.onRelayHello();
 				}
 				case Wire.K_RESET -> {
 					mgr.dropAllGrabs();

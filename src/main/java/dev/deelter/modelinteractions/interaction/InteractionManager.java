@@ -689,6 +689,14 @@ public final class InteractionManager {
 		return permissions.getIfPresent(uuid);
 	}
 
+	/**
+	 * The server just answered our hello: it knows nothing about us yet (or forgot, after a reload).
+	 */
+	public void onRelayHello() {
+		publishOwnPermissions();
+		publishOwnPose();
+	}
+
 	public void publishOwnPermissions() {
 		permissionsPublished = net.publishState(Wire.S_PERM, Protocol.perm(PermissionState.fromConfig(MiConfig.get().getPermissions())));
 		if (permissionsPublished) publishOwnTypes();
