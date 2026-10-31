@@ -9,6 +9,7 @@
 		"EntityRenderStateMixin",
 		"EntityTurnMixin",
 		"GameRendererMixin",
+		"KeyboardInputMixin",
 		"LivingEntityRendererMixin",
 		"MannequinAccessor",
 		"MinecraftMixin",

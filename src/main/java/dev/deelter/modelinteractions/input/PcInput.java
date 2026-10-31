@@ -3,19 +3,24 @@ package dev.deelter.modelinteractions.input;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.config.MiConfig;
+import dev.deelter.modelinteractions.debug.DummyManager;
 import dev.deelter.modelinteractions.interaction.*;
 import dev.deelter.modelinteractions.model.Bone;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.animal.equine.AbstractHorse;
 import net.minecraft.world.entity.npc.InventoryCarrier;
 import net.minecraft.world.entity.npc.Npc;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -26,7 +31,8 @@ import java.util.function.Predicate;
 
 /**
  * Mouse and keyboard. Hold right mouse (the use key) on a part and move the camera to pull
- * it; press Shift while holding to keep the new shape when you let go. Sneak + right mouse pets. Optional
+ * it; Shift or left mouse while holding keeps the new shape when you let go, and neither reaches
+ * the game (no sneak, no hit). Sneak + right mouse pets. Optional
  * dedicated keys do the same without taking over the use key.
  */
 public final class PcInput {
@@ -34,8 +40,10 @@ public final class PcInput {
 	private static final float AIM_MAX_YAW = 45f, AIM_MAX_PITCH = 35f;
 	private static KeyMapping grab, pet, hug, reset, pinSelf, freeMode, keep;
 	private static boolean grabWasDown, shiftWasDown;
-	private static long shiftDownAt;
-	private static boolean shiftTapValid;
+	/**
+	 * Shift went down during a hold and isn't up yet: it is ours, the player doesn't sneak.
+	 */
+	private static boolean sneakHidden;
 	/**
 	 * The current grab / pet was started with the use key and lasts while it is held.
 	 */
@@ -85,6 +93,7 @@ public final class PcInput {
 	 */
 	public static boolean onUseKey(Minecraft mc) {
 		if (useGrabbing || usePetting) return true;
+		if (giveToDummy(mc)) return true;
 		// VR: while a hand holds a part, the other button of a controller marks "keep this shape"
 		if (vrHolding()) {
 			toggleKeep(mc);
@@ -92,6 +101,19 @@ public final class PcInput {
 		}
 		boolean started = startUse(mc);
 		return started && !aimsAtGrabbed(mc);
+	}
+
+	/**
+	 * Right mouse with an item on a dummy dresses it with a copy; your own item stays with you.
+	 */
+	private static boolean giveToDummy(Minecraft mc) {
+		if (mc.player == null || mc.player.getMainHandItem().isEmpty() || !MiConfig.get().isEnabled()) return false;
+		PartHit hit = pick(mc, 1f);
+		if (hit == null || !DummyManager.isDummy(hit.rig().getUuid())) return false;
+		ItemStack held = mc.player.getMainHandItem();
+		EquipmentSlot slot = DummyManager.equip(hit.rig().getUuid(), held);
+		mc.player.sendOverlayMessage(Component.translatable("modelinteractions.msg.dummy_equipped", held.getHoverName(), slot.getName()));
+		return true;
 	}
 
 	/**
@@ -151,8 +173,11 @@ public final class PcInput {
 			toggleKeep(mc);
 			return true;
 		}
+		if (InteractionManager.get().localGrab(HAND) != null) {
+			toggleKeep(mc);
+			return true;
+		}
 		if (!MiConfig.get().isEnabled() || mc.player == null || !mc.player.getMainHandItem().isEmpty()) return false;
-		if (InteractionManager.get().localGrab(HAND) != null) return false;
 		PartHit hit = pick(mc, 1f);
 		if (hit == null) return false;
 		Vec3 look = mc.player.getViewVector(1f);
@@ -164,6 +189,8 @@ public final class PcInput {
 	 * Holding attack while the crosshair passes a model on its way to a block: don't dig that block.
 	 */
 	public static boolean modelInFrontOfBlock(Minecraft mc) {
+		// left mouse pins while holding; held down it must not dig either
+		if (InteractionManager.get().localGrab(HAND) != null) return true;
 		if (!MiConfig.get().isEnabled() || mc.player == null || !mc.player.getMainHandItem().isEmpty()) return false;
 		if (mc.hitResult == null || mc.hitResult.getType() != HitResult.Type.BLOCK) return false;
 		return pick(mc, 1f) != null;
@@ -172,23 +199,17 @@ public final class PcInput {
 	public static void tick(Minecraft mc) {
 		InteractionManager mgr = InteractionManager.get();
 		boolean useDown = mc.options.keyUse.isDown() && mc.gui.screen() == null;
-		// a quick tap of Shift while holding: "keep this shape when I let go", tap again to undo.
-		// Holding Shift is just sneaking and changes nothing
+		// Shift while holding: "keep this shape when I let go", again to undo
 		boolean shift = mc.options.keyShift.isDown() && mc.gui.screen() == null;
-		long nowMs = System.currentTimeMillis();
-		if (shift && !shiftWasDown) {
-			shiftDownAt = nowMs;
-			shiftTapValid = mgr.localGrab(HAND) != null;
-		}
-		if (!shift && shiftWasDown && shiftTapValid && nowMs - shiftDownAt <= 300 && mgr.localGrab(HAND) != null)
+		if (shift && !shiftWasDown && mgr.localGrab(HAND) != null) {
+			sneakHidden = true;
 			toggleKeep(mc);
-		if (mgr.localGrab(HAND) == null) shiftTapValid = false;
+		}
+		if (!shift) sneakHidden = false;
 		shiftWasDown = shift;
-		// Shift pressed during the hold and still down when letting go: the tap never got to end, it counts
-		boolean keepNow = shift && shiftTapValid;
 		if (useGrabbing && (!useDown || mgr.localGrab(HAND) == null)) {
 			useGrabbing = false;
-			mgr.releaseLocal(HAND, keepNow);
+			mgr.releaseLocal(HAND, false);
 		}
 		if (usePetting) {
 			PartHit hit = useDown && mc.player.isShiftKeyDown() ? pick(mc, 1f) : null;
@@ -201,7 +222,7 @@ public final class PcInput {
 			PartHit hit = pick(mc, 1f, b -> true);
 			if (hit != null && mgr.startLocalGrab(HAND, hit) != null) holdDistance = holdTarget = hit.distance();
 		} else if (!down && grabWasDown && !useGrabbing) {
-			mgr.releaseLocal(HAND, keepNow);
+			mgr.releaseLocal(HAND, false);
 		}
 		grabWasDown = down;
 
@@ -240,12 +261,12 @@ public final class PcInput {
 	 * mouse does there. Nothing else on screen tells that a model can be grabbed.
 	 */
 	private static void hint(Minecraft mc, InteractionManager mgr) {
-		if (MiConfig.get().isHintSeen() || mgr.localGrab(HAND) != null || MiConfig.get().isDebugOverlay())
+		if (MiConfig.get().isControlsHintSeen() || mgr.localGrab(HAND) != null || MiConfig.get().isDebugOverlay())
 			return;
 		if (!mc.player.getMainHandItem().isEmpty() || mc.gui.screen() != null) return;
 		PartHit hit = pick(mc, 1f);
 		if (hit == null || !mgr.canGrab(hit) || !useKeyMayGrab(mc, hit)) return;
-		MiConfig.get().setHintSeen(true);
+		MiConfig.get().setControlsHintSeen(true);
 		MiConfig.save();
 		mc.player.sendOverlayMessage(Component.translatable("modelinteractions.msg.hint"));
 	}
@@ -262,6 +283,17 @@ public final class PcInput {
 		float c = InteractionManager.get().complianceOf(g);
 		holdTarget = Math.clamp(holdTarget + (float) amount * 0.15f * (0.3f + 0.7f * c), 0.3f, max);
 		return true;
+	}
+
+	/**
+	 * Keeps the player from sneaking on a Shift meant for us. The player ticks before {@link #tick}
+	 * sees the press, so a fresh one counts here as well.
+	 */
+	public static boolean hidesSneak() {
+		if (sneakHidden) return true;
+		Minecraft mc = Minecraft.getInstance();
+		return mc.options.keyShift.isDown() && !shiftWasDown && mc.gui.screen() == null
+				&& InteractionManager.get().localGrab(HAND) != null;
 	}
 
 	private static boolean vrHolding() {
@@ -286,6 +318,7 @@ public final class PcInput {
 			g.setKeepOnRelease(to);
 		}
 		if (to != null && mc.player != null) {
+			mc.getSoundManager().play(SimpleSoundInstance.forUI(to ? SoundEvents.LEAD_TIED : SoundEvents.LEAD_UNTIED, 1f));
 			mc.player.sendOverlayMessage(Component.translatable(to ? "modelinteractions.msg.keep_on" : "modelinteractions.msg.keep_off"));
 		}
 	}

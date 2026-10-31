@@ -64,7 +64,7 @@
   "modelinteractions.config.mobs": "Взаимодействовать с мобами",
   "modelinteractions.config.localWhenDenied": "Трогать модели тех, кто запретил (только у меня на экране)",
   "modelinteractions.config.localWhenDenied.tooltip": "Ничего не отправляется, ни они, ни другие этого не видят",
-  "modelinteractions.msg.hint": "ПКМ: схватить · Колесо: к себе/от себя · Shift+ПКМ: погладить · Удар: толкнуть",
+  "modelinteractions.msg.hint": "ПКМ: схватить · Колесо: к себе/от себя · Shift или ЛКМ, пока держишь: закрепить · Shift+ПКМ: погладить · Удар: толкнуть",
   "modelinteractions.config.hints": "Подсказки управления",
   "modelinteractions.msg.keep_on": "Останется, когда отпустите",
   "modelinteractions.msg.keep_off": "Вернётся на место",
@@ -95,6 +95,7 @@
   "modelinteractions.config.allow.catchMe.tooltip": "Если вы падаете, пока вас держат за часть тела, вы повиснете у них в руке. Прыжок или присед — вырваться. Нужен плагин на сервере",
   "modelinteractions.config.allow.dragMe.tooltip": "Если держат на земле — вы идёте следом и не можете уйти. Присед — вырваться. Нужен плагин на сервере",
   "modelinteractions.config.sounds": "Звук шлепка",
+  "modelinteractions.msg.dummy_equipped": "%s → %s",
   "modelinteractions.msg.keep_denied": "Этот игрок не разрешает сохранять форму",
   "modelinteractions.msg.version_mismatch": "Model Interactions: версии мода и плагина на сервере разные, синхронизации не будет"
 }

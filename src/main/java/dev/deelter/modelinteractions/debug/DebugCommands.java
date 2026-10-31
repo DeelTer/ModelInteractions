@@ -15,7 +15,10 @@ import dev.deelter.modelinteractions.toy.ToyBridge;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
+import net.minecraft.commands.arguments.item.ItemArgument;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.Locale;
 
@@ -39,6 +42,9 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
  * </pre>
  */
 public final class DebugCommands {
+	private static final EquipmentSlot[] DUMMY_SLOTS = {EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND,
+			EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+
 	private DebugCommands() {
 	}
 
@@ -96,6 +102,16 @@ public final class DebugCommands {
 				}));
 			}
 			dummy.then(motion);
+			var equip = literal("equip");
+			var take = literal("take").executes(c -> take(c, null));
+			for (EquipmentSlot slot : DUMMY_SLOTS) {
+				equip.then(literal(slot.getName())
+						.executes(c -> equip(c, slot, Minecraft.getInstance().player.getMainHandItem()))
+						.then(argument("item", ItemArgument.item(ctx))
+								.executes(c -> equip(c, slot, ItemArgument.getItem(c, "item").createItemStack(1)))));
+				take.then(literal(slot.getName()).executes(c -> take(c, slot)));
+			}
+			dummy.then(equip).then(take);
 
 			var debug = literal("debug")
 					.then(literal("parts").executes(c -> {
@@ -206,6 +222,26 @@ public final class DebugCommands {
 		boolean own = hit.rig().getUuid().equals(mc.player.getUUID());
 		c.getSource().sendFeedback(Component.literal("#" + hit.bone().getId() + " -> " + (type == null ? "auto" : type.name())
 				+ (own ? " (your model, shared with everyone)" : " (only you see this)")));
+		return 1;
+	}
+
+	private static int equip(CommandContext<FabricClientCommandSource> c, EquipmentSlot slot, ItemStack stack) {
+		java.util.UUID uuid = DummyManager.aimed(Minecraft.getInstance());
+		if (uuid == null || stack.isEmpty()) {
+			c.getSource().sendError(Component.literal(uuid == null ? "No dummies" : "Take the item in your hand or name it"));
+			return 0;
+		}
+		DummyManager.equip(uuid, slot, stack);
+		return 1;
+	}
+
+	private static int take(CommandContext<FabricClientCommandSource> c, EquipmentSlot slot) {
+		java.util.UUID uuid = DummyManager.aimed(Minecraft.getInstance());
+		if (uuid == null) {
+			c.getSource().sendError(Component.literal("No dummies"));
+			return 0;
+		}
+		for (EquipmentSlot s : DUMMY_SLOTS) if (slot == null || s == slot) DummyManager.equip(uuid, s, ItemStack.EMPTY);
 		return 1;
 	}
 

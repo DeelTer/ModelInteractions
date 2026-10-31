@@ -64,7 +64,7 @@
   "modelinteractions.config.mobs": "Interact with mobs",
   "modelinteractions.config.localWhenDenied": "Play with models of players who don't allow it (only on my screen)",
   "modelinteractions.config.localWhenDenied.tooltip": "Nothing is sent, they and others never see it",
-  "modelinteractions.msg.hint": "Right mouse: grab · Wheel: pull/push · Sneak+right: pet · Punch: push",
+  "modelinteractions.msg.hint": "Right mouse: grab · Wheel: pull/push · Shift or left mouse while holding: keep · Sneak+right: pet · Punch: push",
   "modelinteractions.config.hints": "Show controls hints",
   "modelinteractions.msg.keep_on": "Will stay when you let go",
   "modelinteractions.msg.keep_off": "Will spring back",
@@ -95,6 +95,7 @@
   "modelinteractions.config.allow.catchMe.tooltip": "Falling while someone holds a part of you, you hang from their hand. Jump or sneak to break free. Needs the server plugin",
   "modelinteractions.config.allow.dragMe.tooltip": "Held on the ground you follow when they walk off and can't walk away from them. Sneak to break free. Needs the server plugin",
   "modelinteractions.config.sounds": "Slap sound",
+  "modelinteractions.msg.dummy_equipped": "%s → %s",
   "modelinteractions.msg.keep_denied": "This player doesn't allow keeping shapes",
   "modelinteractions.msg.version_mismatch": "Model Interactions: mod and server plugin versions differ, interactions won't sync"
 }

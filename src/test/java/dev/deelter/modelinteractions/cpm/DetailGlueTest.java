@@ -45,6 +45,30 @@ class DetailGlueTest {
 	}
 
 	@Test
+	void touchingBoxesOfAnEmptyGroupMoveAsOne() {
+		Bone root = bone(1, null, PartType.HEAD, -100, 8);
+		Bone group = bone(2, root, PartType.ACCESSORY, 0, 0);
+		Bone a = bone(3, group, PartType.HAIR, 0, 6);
+		Bone b = bone(4, group, PartType.HAIR, 6, 6);
+		List<Bone> all = List.of(root, group, a, b);
+		PartClassifier.glueDetails(all, List.of(group, a, b));
+		assertEquals(PartType.HAIR, group.getType());
+		assertEquals(PartType.STATIC, a.getType());
+		assertEquals(group, b.movable());
+	}
+
+	@Test
+	void groupOfApartBoxesStaysAsItIs() {
+		Bone root = bone(1, null, PartType.HEAD, -100, 8);
+		Bone group = bone(2, root, PartType.ACCESSORY, 0, 0);
+		Bone a = bone(3, group, PartType.HAIR, 0, 6);
+		Bone b = bone(4, group, PartType.HAIR, 30, 6);
+		PartClassifier.glueDetails(List.of(root, group, a, b), List.of(group, a, b));
+		assertEquals(PartType.HAIR, a.getType());
+		assertEquals(a, a.movable());
+	}
+
+	@Test
 	void pickedTypeIsLeftAlone() {
 		Bone root = bone(1, null, PartType.HEAD, -100, 8);
 		Bone ear = bone(2, root, PartType.EAR, 0, 6);

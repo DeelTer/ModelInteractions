@@ -4,9 +4,7 @@ import dev.deelter.modelinteractions.physics.PartType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Guesses what an element is from its geometry, because exported CPM models carry no
@@ -75,6 +73,7 @@ public final class PartClassifier {
 	 * geometry; a type someone picked is left alone. Needs rest frames and types.
 	 */
 	public static void glueDetails(Collection<Bone> bones, Collection<Bone> guessed) {
+		mergeGroups(bones, guessed);
 		Set<Bone> parents = new HashSet<>();
 		for (Bone b : bones) if (b.getParent() != null) parents.add(b.getParent());
 		for (Bone b : guessed) {
@@ -90,6 +89,67 @@ public final class PartClassifier {
 			b.setType(PartType.STATIC);
 			if (host != null && !isAncestor(host, b)) b.setHost(host);
 		}
+	}
+
+	/**
+	 * An empty group of touching elements is one shape built of many boxes (a crown of plates, a
+	 * coat): if each swung on its own pivot it would fall apart. The group moves, about its own
+	 * pivot, and the boxes stay put in it. Chains are left alone: their joints are meant to bend.
+	 */
+	private static void mergeGroups(Collection<Bone> bones, Collection<Bone> guessed) {
+		Set<Bone> auto = new HashSet<>(guessed);
+		Map<Bone, List<Bone>> kids = new HashMap<>();
+		for (Bone b : bones) if (b.getParent() != null) kids.computeIfAbsent(b.getParent(), k -> new ArrayList<>()).add(b);
+		Set<Bone> merged = new HashSet<>();
+		List<Bone> order = new ArrayList<>(bones);
+		// bones are parent-first: inner groups go first
+		Collections.reverse(order);
+		for (Bone group : order) {
+			List<Bone> in = kids.get(group);
+			if (group.isRoot() || size(group) > 0 || !auto.contains(group) || in == null || in.size() < 2) continue;
+			boolean plain = true;
+			for (Bone k : in) plain &= auto.contains(k) && (!kids.containsKey(k) || merged.contains(k));
+			if (!plain || !isConnected(in, kids)) continue;
+			PartType type = commonType(in);
+			if (type == null) continue;
+			float lever = 0;
+			Vector3f pivot = group.model().getTranslation(new Vector3f()), c = new Vector3f();
+			for (Bone k : in) {
+				k.setType(PartType.STATIC);
+				for (Bone leaf : leaves(k, kids, new ArrayList<>()))
+					lever = Math.max(lever, leaf.model().transformPosition(leaf.center(c)).distance(pivot));
+			}
+			group.setType(type);
+			group.setLengthPx(lever * 16f);
+			merged.add(group);
+		}
+	}
+
+	private static PartType commonType(List<Bone> bones) {
+		EnumMap<PartType, Integer> counts = new EnumMap<>(PartType.class);
+		for (Bone b : bones) if (b.getType().isGrabbable()) counts.merge(b.getType(), 1, Integer::sum);
+		return counts.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(null);
+	}
+
+	private static List<Bone> leaves(Bone b, Map<Bone, List<Bone>> kids, List<Bone> out) {
+		if (size(b) > 0) out.add(b);
+		for (Bone k : kids.getOrDefault(b, List.of())) leaves(k, kids, out);
+		return out;
+	}
+
+	private static boolean isConnected(List<Bone> bones, Map<Bone, List<Bone>> kids) {
+		Set<Bone> reached = new HashSet<>(List.of(bones.get(0)));
+		Deque<Bone> queue = new ArrayDeque<>(reached);
+		while (!queue.isEmpty()) {
+			List<Bone> from = leaves(queue.pop(), kids, new ArrayList<>());
+			for (Bone o : bones) {
+				if (reached.contains(o)) continue;
+				boolean near = false;
+				for (Bone x : from) for (Bone y : leaves(o, kids, new ArrayList<>())) near |= isTouching(x, y);
+				if (near && reached.add(o)) queue.add(o);
+			}
+		}
+		return reached.size() == bones.size();
 	}
 
 	private static boolean isDetail(Bone b) {

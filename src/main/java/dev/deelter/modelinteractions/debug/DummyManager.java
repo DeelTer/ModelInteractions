@@ -2,7 +2,9 @@ package dev.deelter.modelinteractions.debug;
 
 import com.mojang.authlib.GameProfile;
 import dev.deelter.modelinteractions.ModelInteractions;
+import dev.deelter.modelinteractions.input.PcInput;
 import dev.deelter.modelinteractions.interaction.InteractionManager;
+import dev.deelter.modelinteractions.interaction.PartHit;
 import dev.deelter.modelinteractions.wire.Wire;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
@@ -13,7 +15,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
 import java.io.IOException;
@@ -185,6 +189,30 @@ public final class DummyManager {
 		if (d == null) return;
 		d.lookAt = l.active() ? new Vec3(l.x(), l.y(), l.z()) : null;
 		d.lookNanos = System.nanoTime();
+	}
+
+	/**
+	 * Dresses a dummy with a copy of the item, in the slot the item belongs to.
+	 */
+	public static EquipmentSlot equip(UUID uuid, ItemStack stack) {
+		EquipmentSlot slot = DUMMIES.get(uuid).entity.getEquipmentSlotForItem(stack);
+		equip(uuid, slot, stack);
+		return slot;
+	}
+
+	public static void equip(UUID uuid, EquipmentSlot slot, ItemStack stack) {
+		DUMMIES.get(uuid).entity.setItemSlot(slot, stack.copyWithCount(Math.min(stack.getCount(), slot.isArmor() ? 1 : stack.getCount())));
+	}
+
+	/**
+	 * The dummy under the crosshair, else the nearest one; null when there are none.
+	 */
+	public static UUID aimed(Minecraft mc) {
+		PartHit hit = PcInput.pick(mc, 1f);
+		if (hit != null && isDummy(hit.rig().getUuid())) return hit.rig().getUuid();
+		return DUMMIES.values().stream()
+				.min(Comparator.comparingDouble(d -> d.entity.distanceToSqr(mc.player)))
+				.map(d -> d.entity.getUUID()).orElse(null);
 	}
 
 	public static boolean setMotion(Motion motion) {

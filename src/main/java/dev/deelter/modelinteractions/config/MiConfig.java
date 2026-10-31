@@ -49,7 +49,7 @@ public class MiConfig {
 	/**
 	 * The one-time hint about what the mouse does has been shown.
 	 */
-	private boolean hintSeen = false;
+	private boolean controlsHintSeen = false;
 	/**
 	 * A light tap in the controller whenever a hand comes within reach of a part.
 	 */

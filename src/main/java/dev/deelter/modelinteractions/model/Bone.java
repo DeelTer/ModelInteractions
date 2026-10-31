@@ -42,6 +42,7 @@ public class Bone {
 	private final Vector3f tip = new Vector3f();
 	@Setter
 	boolean visible = true;
+	@Setter
 	private float lengthPx;
 	@Setter
 	private PartType type = PartType.STATIC;
