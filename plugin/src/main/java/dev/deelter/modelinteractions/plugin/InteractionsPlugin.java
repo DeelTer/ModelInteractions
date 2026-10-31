@@ -1,5 +1,6 @@
 package dev.deelter.modelinteractions.plugin;
 
+import dev.deelter.modelinteractions.wire.Session;
 import dev.deelter.modelinteractions.wire.Wire;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -59,8 +60,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	 * this plugin already drops actions from players the owner did not list.
 	 */
 	static byte[] redacted(Wire.Perm p) {
-		int mode = p.mode() == 1 ? 0 : p.mode();
-		return Wire.encodePerm(new Wire.Perm(mode, p.flags(), List.of(), List.of()));
+		return Wire.redacted(p);
 	}
 
 	double range() {
@@ -123,7 +123,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	}
 
 	private void hello(Player p) {
-		sessions.computeIfAbsent(p.getUniqueId(), u -> new Session(settings));
+		sessions.computeIfAbsent(p.getUniqueId(), u -> settings.session());
 		int flags = (settings.mobs() && p.hasPermission("modelinteractions.mobs") ? Wire.HELLO_MOBS : 0)
 				| (carrying != null && carrying.mobsAllowedFor(p) ? Wire.HELLO_CARRY : 0)
 				| (getConfig().getBoolean("adult-features", false) ? Wire.HELLO_ADULT : 0);
@@ -373,7 +373,7 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 		if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
 			loadSettings();
 			carrying.setRules(Carrying.Rules.read(section("carry")));
-			sessions.values().forEach(s -> s.reconfigure(settings));
+			sessions.values().forEach(s -> settings.reconfigure(s));
 			sender.sendMessage("Model Interactions: reloaded, relay range " + (int) settings.range() + " blocks");
 			return true;
 		}
@@ -390,5 +390,12 @@ public final class InteractionsPlugin extends JavaPlugin implements PluginMessag
 	                double actRate, double actBurst, double stateRate, double stateBurst, double reqRate,
 	                double reqBurst,
 	                long petCooldownMs, long hugCooldownMs) {
+		Session session() {
+			return new Session(actRate, actBurst, stateRate, stateBurst, reqRate, reqBurst);
+		}
+
+		void reconfigure(Session s) {
+			s.reconfigure(actRate, actBurst, stateRate, stateBurst, reqRate, reqBurst);
+		}
 	}
 }

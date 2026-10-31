@@ -6,11 +6,6 @@ import dev.deelter.modelinteractions.interaction.InteractionManager;
 import dev.deelter.modelinteractions.wire.Wire;
 import lombok.Getter;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.Identifier;
 
 import java.io.DataInputStream;
 import java.util.UUID;
@@ -49,16 +44,14 @@ public final class RelayNet implements NetBridge {
 	 * while we were still joining would be lost, so we ask once we can hear the answer.
 	 */
 	public static void tick() {
-		if (active || versionMismatch || hellos >= HELLO_TRIES || !ClientPlayNetworking.canSend(Payload.TYPE)) return;
+		if (active || versionMismatch || hellos >= HELLO_TRIES || !ClientPlayNetworking.canSend(MiPayload.TYPE)) return;
 		if (helloTicks++ % HELLO_INTERVAL != 0) return;
 		hellos++;
-		ClientPlayNetworking.send(new Payload(Wire.encodeClientHello()));
+		ClientPlayNetworking.send(new MiPayload(Wire.encodeClientHello()));
 	}
 
 	public static void register() {
-		PayloadTypeRegistry.serverboundPlay().register(Payload.TYPE, Payload.CODEC);
-		PayloadTypeRegistry.clientboundPlay().register(Payload.TYPE, Payload.CODEC);
-		ClientPlayNetworking.registerGlobalReceiver(Payload.TYPE, (p, ctx) -> ctx.client().execute(() -> receive(p.data())));
+		ClientPlayNetworking.registerGlobalReceiver(MiPayload.TYPE, (p, ctx) -> ctx.client().execute(() -> receive(p.data())));
 	}
 
 	public static void reset() {
@@ -122,8 +115,8 @@ public final class RelayNet implements NetBridge {
 	}
 
 	private static boolean send(byte[] data) {
-		if (!active || !ClientPlayNetworking.canSend(Payload.TYPE)) return false;
-		ClientPlayNetworking.send(new Payload(data));
+		if (!active || !ClientPlayNetworking.canSend(MiPayload.TYPE)) return false;
+		ClientPlayNetworking.send(new MiPayload(data));
 		return true;
 	}
 
@@ -154,24 +147,4 @@ public final class RelayNet implements NetBridge {
 		return active;
 	}
 
-	/**
-	 * Raw {@link Wire} bytes; a Paper plugin gets and sends exactly these.
-	 */
-	public record Payload(byte[] data) implements CustomPacketPayload {
-		public static final Type<Payload> TYPE = new Type<>(Identifier.parse(Wire.CHANNEL));
-		public static final StreamCodec<RegistryFriendlyByteBuf, Payload> CODEC = StreamCodec.of(
-				(buf, p) -> buf.writeBytes(p.data),
-				buf -> {
-					int n = buf.readableBytes();
-					if (n > Wire.MAX_STATE_BODY + 64) throw new IllegalArgumentException("message too big");
-					byte[] d = new byte[n];
-					buf.readBytes(d);
-					return new Payload(d);
-				});
-
-		@Override
-		public Type<Payload> type() {
-			return TYPE;
-		}
-	}
 }

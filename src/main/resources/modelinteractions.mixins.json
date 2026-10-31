@@ -4,7 +4,6 @@
 	"package": "dev.deelter.modelinteractions.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"EntityAccessor",
 		"EntityPushMixin",
 		"EntityRendererMixin",
 		"EntityRenderStateMixin",
@@ -20,5 +19,8 @@
 	],
 	"injectors": {
 		"defaultRequire": 1
-	}
+	},
+	"mixins": [
+		"EntityAccessor"
+	]
 }

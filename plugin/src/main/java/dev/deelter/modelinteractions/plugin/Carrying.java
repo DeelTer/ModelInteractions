@@ -1,6 +1,7 @@
 package dev.deelter.modelinteractions.plugin;
 
 import dev.deelter.modelinteractions.wire.CarryGroup;
+import dev.deelter.modelinteractions.wire.Session;
 import dev.deelter.modelinteractions.wire.Wire;
 import org.bukkit.GameMode;
 import org.bukkit.Location;

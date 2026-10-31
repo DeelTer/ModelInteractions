@@ -356,6 +356,15 @@ public final class Wire {
 		return data.length >= 2 && data[1] == K_HELLO && data[0] != VERSION;
 	}
 
+	/**
+	 * Permissions as others see them: no name lists. Whitelist mode becomes "everyone" because
+	 * the server already drops actions from players the owner did not list.
+	 */
+	public static byte[] redacted(Perm p) {
+		int mode = p.mode() == 1 ? 0 : p.mode();
+		return encodePerm(new Perm(mode, p.flags(), List.of(), List.of()));
+	}
+
 	public static byte[] encodeReq(UUID target) {
 		return write(out -> {
 			out.writeByte(VERSION);

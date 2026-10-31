@@ -1,5 +1,7 @@
 package dev.deelter.modelinteractions.plugin;
 
+import dev.deelter.modelinteractions.wire.Session;
+import dev.deelter.modelinteractions.wire.TokenBucket;
 import dev.deelter.modelinteractions.wire.Wire;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +28,7 @@ class RelayRulesTest {
 
 	@Test
 	void serverEnforcesWhoMayTouch() {
-		Session s = new Session(S);
+		Session s = S.session();
 		assertTrue(s.allowsActor("anyone"));
 		s.perm = new Wire.Perm(1, 0, List.of("friend"), List.of());
 		assertTrue(s.allowsActor("Friend"));
@@ -39,7 +41,7 @@ class RelayRulesTest {
 
 	@Test
 	void movesOnlyForStartedGrabs() {
-		Session s = new Session(S);
+		Session s = S.session();
 		UUID t = UUID.randomUUID();
 		assertFalse(s.holds(1, t, 4));
 		s.grab(1, t, 4);
@@ -61,7 +63,7 @@ class RelayRulesTest {
 
 	@Test
 	void cooldownPerTarget() {
-		Session s = new Session(S);
+		Session s = S.session();
 		UUID a = UUID.randomUUID(), b = UUID.randomUUID();
 		assertTrue(s.cooldown("pet", a, 10_000));
 		assertFalse(s.cooldown("pet", a, 10_000));
