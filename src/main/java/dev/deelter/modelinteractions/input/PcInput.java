@@ -45,6 +45,10 @@ public final class PcInput {
 	 */
 	private static boolean sneakHidden;
 	/**
+	 * The click took an item off a dummy; repeats while the button is held must not take the next one.
+	 */
+	private static boolean useTaking;
+	/**
 	 * The current grab / pet was started with the use key and lasts while it is held.
 	 */
 	private static boolean useGrabbing, usePetting;
@@ -93,7 +97,8 @@ public final class PcInput {
 	 */
 	public static boolean onUseKey(Minecraft mc) {
 		if (useGrabbing || usePetting) return true;
-		if (giveToDummy(mc)) return true;
+		if (useTaking) return true;
+		if (giveToDummy(mc) || takeFromDummy(mc)) return true;
 		// VR: while a hand holds a part, the other button of a controller marks "keep this shape"
 		if (vrHolding()) {
 			toggleKeep(mc);
@@ -113,6 +118,23 @@ public final class PcInput {
 		ItemStack held = mc.player.getMainHandItem();
 		EquipmentSlot slot = DummyManager.equip(hit.rig().getUuid(), held);
 		mc.player.sendOverlayMessage(Component.translatable("modelinteractions.msg.dummy_equipped", held.getHoverName(), slot.getName()));
+		return true;
+	}
+
+	/**
+	 * Sneak + right mouse with an empty hand takes off what the dummy wears on the part you click.
+	 * With nothing there it is the usual petting.
+	 */
+	private static boolean takeFromDummy(Minecraft mc) {
+		if (mc.player == null || !mc.player.isShiftKeyDown() || !mc.player.getMainHandItem().isEmpty() || !MiConfig.get().isEnabled())
+			return false;
+		PartHit hit = pick(mc, 1f);
+		if (hit == null || !DummyManager.isDummy(hit.rig().getUuid())) return false;
+		ItemStack taken = DummyManager.take(hit.rig().getUuid(), hit.bone().getRegion());
+		if (taken.isEmpty()) return false;
+		useTaking = true;
+		mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.ITEM_PICKUP, 1f));
+		mc.player.sendOverlayMessage(Component.translatable("modelinteractions.msg.dummy_taken", taken.getHoverName()));
 		return true;
 	}
 
@@ -199,6 +221,7 @@ public final class PcInput {
 	public static void tick(Minecraft mc) {
 		InteractionManager mgr = InteractionManager.get();
 		boolean useDown = mc.options.keyUse.isDown() && mc.gui.screen() == null;
+		if (!useDown) useTaking = false;
 		// Shift while holding: "keep this shape when I let go", again to undo
 		boolean shift = mc.options.keyShift.isDown() && mc.gui.screen() == null;
 		if (shift && !shiftWasDown && mgr.localGrab(HAND) != null) {

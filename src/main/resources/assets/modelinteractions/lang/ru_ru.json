@@ -96,6 +96,7 @@
   "modelinteractions.config.allow.dragMe.tooltip": "Если держат на земле — вы идёте следом и не можете уйти. Присед — вырваться. Нужен плагин на сервере",
   "modelinteractions.config.sounds": "Звук шлепка",
   "modelinteractions.msg.dummy_equipped": "%s → %s",
+  "modelinteractions.msg.dummy_taken": "Снято: %s",
   "modelinteractions.msg.keep_denied": "Этот игрок не разрешает сохранять форму",
   "modelinteractions.msg.version_mismatch": "Model Interactions: версии мода и плагина на сервере разные, синхронизации не будет"
 }

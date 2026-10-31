@@ -5,6 +5,7 @@ import dev.deelter.modelinteractions.ModelInteractions;
 import dev.deelter.modelinteractions.input.PcInput;
 import dev.deelter.modelinteractions.interaction.InteractionManager;
 import dev.deelter.modelinteractions.interaction.PartHit;
+import dev.deelter.modelinteractions.model.BodyRegion;
 import dev.deelter.modelinteractions.wire.Wire;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
@@ -202,6 +203,30 @@ public final class DummyManager {
 
 	public static void equip(UUID uuid, EquipmentSlot slot, ItemStack stack) {
 		DUMMIES.get(uuid).entity.setItemSlot(slot, stack.copyWithCount(Math.min(stack.getCount(), slot.isArmor() ? 1 : stack.getCount())));
+	}
+
+	/**
+	 * Takes off what is worn on that part of the body, the first of its slots with anything in it.
+	 * Mobs' other parts have no slots of their own, so any slot will do.
+	 */
+	public static ItemStack take(UUID uuid, BodyRegion region) {
+		LivingEntity e = DUMMIES.get(uuid).entity;
+		EquipmentSlot[] order = switch (region) {
+			case HEAD -> new EquipmentSlot[]{EquipmentSlot.HEAD};
+			case BODY -> new EquipmentSlot[]{EquipmentSlot.CHEST};
+			case RIGHT_ARM -> new EquipmentSlot[]{EquipmentSlot.MAINHAND};
+			case LEFT_ARM -> new EquipmentSlot[]{EquipmentSlot.OFFHAND};
+			case LEFT_LEG, RIGHT_LEG -> new EquipmentSlot[]{EquipmentSlot.LEGS, EquipmentSlot.FEET};
+			default -> new EquipmentSlot[]{EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND, EquipmentSlot.HEAD,
+					EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+		};
+		for (EquipmentSlot slot : order) {
+			ItemStack worn = e.getItemBySlot(slot);
+			if (worn.isEmpty()) continue;
+			e.setItemSlot(slot, ItemStack.EMPTY);
+			return worn;
+		}
+		return ItemStack.EMPTY;
 	}
 
 	/**
