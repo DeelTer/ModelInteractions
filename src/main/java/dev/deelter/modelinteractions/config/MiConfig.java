@@ -132,7 +132,6 @@ public class MiConfig {
 		if (ownTypes == null) ownTypes = new HashMap<>();
 		if (permissions.lookMode == null) permissions.lookMode = LookMode.IDLE;
 		physics.returnSmoothing = Math.clamp(physics.returnSmoothing, 0f, 1f);
-		physics.idleSway = Math.clamp(physics.idleSway, 0f, 0.2f);
 		physics.stiffness = Math.clamp(physics.stiffness, 0.1f, 5f);
 		physics.damping = Math.clamp(physics.damping, 0.1f, 5f);
 		input.syncHz = Math.clamp(input.syncHz, 2, 30);
@@ -144,10 +143,6 @@ public class MiConfig {
 		private float stiffness = 1f;
 		private float damping = 1f;
 		/**
-		 * Ears/tails react to the owner walking, jumping, turning.
-		 */
-		private boolean bodyMotion = true;
-		/**
 		 * VR hands brushing parts push them.
 		 */
 		private boolean touch = true;
@@ -156,10 +151,6 @@ public class MiConfig {
 		 * 0..1: how gently parts glide back after being released.
 		 */
 		private float returnSmoothing = 0.6f;
-		/**
-		 * Idle sway of soft and posed parts, radians. 0 disables.
-		 */
-		private float idleSway = 0.035f;
 	}
 
 	@Data

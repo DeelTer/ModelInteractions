@@ -7,7 +7,7 @@ import lombok.With;
  * scaled by {@link #frequencyFor(float)} so long tails swing slower than short ears.
  */
 @With
-public record PhysicsProfile(float baseFrequency, float dampingRatio, float maxAngle, float inertia,
+public record PhysicsProfile(float baseFrequency, float dampingRatio, float maxAngle,
                              boolean grabbable) {
 
 	/**
@@ -19,6 +19,6 @@ public record PhysicsProfile(float baseFrequency, float dampingRatio, float maxA
 	}
 
 	public PhysicsProfile scaled(float stiffnessMul, float dampingMul) {
-		return new PhysicsProfile(baseFrequency * (float) Math.sqrt(stiffnessMul), dampingRatio * dampingMul, maxAngle, inertia, grabbable);
+		return new PhysicsProfile(baseFrequency * (float) Math.sqrt(stiffnessMul), dampingRatio * dampingMul, maxAngle, grabbable);
 	}
 }

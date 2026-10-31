@@ -25,7 +25,7 @@ public class PlayerRig {
 	/**
 	 * The torso: turns everything about {@link #bodyPivot}. Slow, heavy, can go all the way round.
 	 */
-	private static final PhysicsProfile BODY_PROFILE = new PhysicsProfile(3.2f, 0.75f, (float) Math.PI * 0.98f, 0f, true);
+	private static final PhysicsProfile BODY_PROFILE = new PhysicsProfile(3.2f, 0.75f, (float) Math.PI * 0.98f, true);
 	@Getter
 	private final UUID uuid;
 	private final Map<Integer, Bone> bones = new LinkedHashMap<>();
@@ -65,7 +65,6 @@ public class PlayerRig {
 	@Getter
 	private final Matrix4f worldToModel = new Matrix4f();
 	// body motion for inertia, model space
-	private final Vector3f prevWorldPos = new Vector3f(), prevWorldVel = new Vector3f(), accelModel = new Vector3f();
 	private WeakReference<Object> definition = new WeakReference<>(null);
 	@Getter
 	private String modelKey = "";
@@ -80,24 +79,7 @@ public class PlayerRig {
 	private SpringJoint bodyJoint;
 	@Getter
 	private float totalMass = 1;
-	/**
-	 * Model-space point it hangs from while held by one point in the air, or null.
-	 */
-	@Setter
-	private Vector3f hang;
 	private boolean pivotInit;
-	/**
-	 * Last time someone touched this entity; mobs only get ambient physics for a while after.
-	 */
-	@Getter
-	@Setter
-	private long touchedNanos;
-	/**
-	 * Idle sway and body-motion swing this frame (players always, mobs shortly after a touch).
-	 */
-	@Getter
-	@Setter
-	private boolean ambient;
 	/**
 	 * World point the head of the model turns to (a VR player's head someone holds), or null.
 	 */
@@ -112,13 +94,7 @@ public class PlayerRig {
 	@Getter
 	@Setter
 	private long lastSeenNanos;
-	private float prevBodyYaw, yawVel, yawAccel;
-	private boolean hasMotionHistory;
 	// pet reaction
-	@Getter
-	private float petTimer, wagTimer;
-	private float wagPhase;
-	private float idleTime;
 	public PlayerRig(UUID uuid) {
 		this.uuid = uuid;
 	}
@@ -130,13 +106,6 @@ public class PlayerRig {
 
 	public static boolean isSoft(PartType t) {
 		return t == PartType.EAR || t == PartType.TAIL || t == PartType.HAIR || t == PartType.WING || t == PartType.JELLY;
-	}
-
-	private static float wrapDeg(float d) {
-		d %= 360f;
-		if (d >= 180f) d -= 360f;
-		if (d < -180f) d += 360f;
-		return d;
 	}
 
 	public boolean isFor(Object def) {
@@ -246,7 +215,7 @@ public class PlayerRig {
 	 * contact in model space for this frame.
 	 */
 	public void updatePivot(boolean grounded, Vector3f feetModel, float dt) {
-		Vector3f want = hang != null ? hang : grounded ? feetModel : bodyPivot;
+		Vector3f want = grounded ? feetModel : bodyPivot;
 		if (!pivotInit || dt <= 0) {
 			pivot.set(want);
 			pivotInit = true;
@@ -266,97 +235,16 @@ public class PlayerRig {
 	}
 
 	/**
-	 * Track body motion; called once per frame after {@link #setBase}.
-	 */
-	public void updateMotion(float dt, float bodyYawDeg) {
-		Vector3f pos = baseModelToWorld.getTranslation(new Vector3f());
-		if (!hasMotionHistory || dt <= 0) {
-			prevWorldPos.set(pos);
-			prevWorldVel.zero();
-			prevBodyYaw = bodyYawDeg;
-			yawVel = 0;
-			hasMotionHistory = true;
-			return;
-		}
-		Vector3f vel = new Vector3f(pos).sub(prevWorldPos).div(dt);
-		if (vel.lengthSquared() > 400) vel.zero(); // teleport
-		Vector3f acc = new Vector3f(vel).sub(prevWorldVel).div(dt);
-		SpringJoint.clamp(acc, 60f);
-		// rotate world acceleration into model space (direction only)
-		worldToModel.transformDirection(acc, accelModel).normalize(acc.length());
-		if (!Float.isFinite(accelModel.x)) accelModel.zero();
-		prevWorldPos.set(pos);
-		prevWorldVel.set(vel);
-
-		float dyaw = wrapDeg(bodyYawDeg - prevBodyYaw);
-		prevBodyYaw = bodyYawDeg;
-		float newYawVel = (float) Math.toRadians(dyaw) / dt;
-		yawAccel = Math.clamp((newYawVel - yawVel) / dt, -200f, 200f);
-		yawVel = newYawVel;
-	}
-
-	public void triggerPet(float seconds) {
-		petTimer = Math.max(petTimer, seconds);
-		wagTimer = Math.max(wagTimer, seconds + 1.5f);
-	}
-
-	/**
 	 * Advances all springs. Grabs have already written their targets for this frame.
 	 */
-	public void step(float dt, MiConfig cfg, boolean ambient) {
+	public void step(float dt, MiConfig cfg) {
 		if (dt <= 0) return;
-		petTimer = Math.max(0, petTimer - dt);
-		wagTimer = Math.max(0, wagTimer - dt);
-		wagPhase += dt * 9f;
-		idleTime += dt;
-		float sway = ambient ? cfg.getPhysics().getIdleSway() : 0;
 		float smoothing = cfg.getPhysics().getReturnSmoothing();
 
 		// released joints spring back to their saved shape
-		for (SpringJoint j : joints.values()) if (!j.isHeld()) j.getTarget().zero();
-
-		boolean motion = ambient && cfg.getPhysics().isBodyMotion();
-		Vector3f tmp = new Vector3f();
-		for (Bone b : bones.values()) {
-			if (b.isRoot() || !b.getType().isGrabbable()) continue;
-			PartType t = b.getType();
-			SpringJoint j = joints.get(b.getId());
-			if (!isSoft(t)) {
-				// rigid parts only sway while they hold a pose someone left on them
-				if (j != null && sway > 0 && !j.isHeld() && j.getPinned().lengthSquared() > 1e-6f)
-					addSway(j, b.getId(), sway * 0.5f);
-				if (j != null) j.setReturnSmoothing(smoothing);
-				continue;
-			}
-			if (j == null && (motion || sway > 0 || petTimer > 0 || wagTimer > 0)) j = joint(b.getId());
-			if (j == null) continue;
+		for (SpringJoint j : joints.values()) {
+			if (!j.isHeld()) j.getTarget().zero();
 			j.setReturnSmoothing(smoothing);
-			if (sway > 0 && !j.isHeld()) addSway(j, b.getId(), t == PartType.JELLY ? sway * 0.4f : sway);
-
-			// inertia: body acceleration pushes the tip the other way
-			if (motion && t.getInertia() > 0) {
-				Vector3f accLocal = b.parentModel().invert(new Matrix4f()).transformDirection(accelModel, tmp);
-				Vector3f levLocal = b.localRest().transformDirection(new Vector3f(b.getTip()));
-				float inv = 1f / Math.max(levLocal.lengthSquared(), 1e-3f);
-				Vector3f torque = levLocal.cross(accLocal.negate(), new Vector3f()).mul(inv * t.getInertia() * 0.6f);
-				// yaw spin flings tips outwards / backwards
-				torque.add(0, -yawAccel * t.getInertia() * 0.05f, 0);
-				j.addAcceleration(SpringJoint.clamp(torque, 400f));
-			}
-
-			if (!j.isHeld()) {
-				if (petTimer > 0 && t == PartType.EAR) {
-					// fold ears back: rotate the tip towards +Z (behind) and down
-					Vector3f dir = b.localRest().transformDirection(new Vector3f(b.getTip()));
-					Vector3f goal = new Vector3f(dir).add(0, dir.length() * 0.3f, dir.length() * 0.9f);
-					SpringJoint.rotationBetween(dir, goal, tmp).mul(Math.min(1f, petTimer * 2f) * 0.7f);
-					j.getTarget().add(tmp);
-				}
-				if (wagTimer > 0 && t == PartType.TAIL && b.depthInChain() == 0) {
-					float amp = (float) Math.toRadians(28) * Math.min(1f, wagTimer);
-					j.getTarget().add(0, (float) Math.sin(wagPhase) * amp, 0);
-				}
-			}
 		}
 
 		aimHead();
@@ -370,31 +258,12 @@ public class PlayerRig {
 			j.step(dt);
 		}
 
-		if (hang != null && (bodyJoint == null || !bodyJoint.isHeld())) {
-			// hanging from one point: the body swings until its middle is straight below it
-			Vector3f down = baseWorldToModel.transformDirection(new Vector3f(0, -1, 0), new Vector3f());
-			Vector3f arm = new Vector3f(bodyCenter).sub(hang);
-			if (arm.lengthSquared() > 1e-4f && down.lengthSquared() > 1e-6f) {
-				bodyJoint().getTarget().set(SpringJoint.rotationBetween(arm, down.normalize(arm.length()), new Vector3f()));
-			}
-		}
 		if (bodyJoint != null) {
-			if (!bodyJoint.isHeld() && hang == null) bodyJoint.getTarget().zero();
+			if (!bodyJoint.isHeld()) bodyJoint.getTarget().zero();
 			bodyJoint.setReturnSmoothing(smoothing);
 			if (bodyJoint.isAtRest() && bodyJoint.getPinned().lengthSquared() == 0) bodyJoint = null;
 			else if (!bodyJoint.isSleeping()) bodyJoint.step(dt);
 		}
-	}
-
-	/**
-	 * Slow, per-bone desynchronised wobble so idle and posed parts look alive.
-	 */
-	private void addSway(SpringJoint j, int id, float amp) {
-		float seed = (id * 0.618034f) % 1f * 6.2832f;
-		float t = idleTime;
-		float x = (float) (Math.sin(t * 0.9f + seed) * 0.6 + Math.sin(t * 1.73f + seed * 2.3f) * 0.4);
-		float z = (float) (Math.sin(t * 0.7f + seed * 1.7f) * 0.6 + Math.sin(t * 1.31f + seed * 0.5f) * 0.4);
-		j.getTarget().add(x * amp, 0, z * amp);
 	}
 
 	public void lookAt(net.minecraft.world.phys.Vec3 world) {

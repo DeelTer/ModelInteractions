@@ -46,11 +46,9 @@ public final class ClothConfigScreen {
 		ConfigCategory phys = b.getOrCreateCategory(t("physics"));
 		phys.addEntry(e.startFloatField(t("stiffness"), p.getStiffness()).setDefaultValue(dp.getStiffness()).setMin(0.1f).setMax(5f).setSaveConsumer(p::setStiffness).build());
 		phys.addEntry(e.startFloatField(t("damping"), p.getDamping()).setDefaultValue(dp.getDamping()).setMin(0.1f).setMax(5f).setSaveConsumer(p::setDamping).build());
-		phys.addEntry(e.startBooleanToggle(t("bodyMotion"), p.isBodyMotion()).setDefaultValue(dp.isBodyMotion()).setSaveConsumer(p::setBodyMotion).build());
 		phys.addEntry(e.startBooleanToggle(t("touch"), p.isTouch()).setDefaultValue(dp.isTouch()).setSaveConsumer(p::setTouch).build());
 		phys.addEntry(e.startFloatField(t("touchStrength"), p.getTouchStrength()).setDefaultValue(dp.getTouchStrength()).setMin(0f).setMax(5f).setSaveConsumer(p::setTouchStrength).build());
 		phys.addEntry(e.startFloatField(t("returnSmoothing"), p.getReturnSmoothing()).setDefaultValue(dp.getReturnSmoothing()).setMin(0f).setMax(1f).setTooltip(t("returnSmoothing.tooltip")).setSaveConsumer(p::setReturnSmoothing).build());
-		phys.addEntry(e.startFloatField(t("idleSway"), p.getIdleSway()).setDefaultValue(dp.getIdleSway()).setMin(0f).setMax(0.2f).setTooltip(t("idleSway.tooltip")).setSaveConsumer(p::setIdleSway).build());
 
 		MiConfig.Input in = c.getInput(), din = d.getInput();
 		ConfigCategory input = b.getOrCreateCategory(t("input"));

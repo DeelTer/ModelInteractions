@@ -55,10 +55,6 @@ public final class InteractionManager {
 	 */
 	private static final double SIM_RANGE = 48;
 	/**
-	 * Mobs keep ambient physics this long after being touched.
-	 */
-	private static final long MOB_AMBIENT = 10_000_000_000L;
-	/**
 	 * "Pose me": stepping further than this from where you were posed lets the pose go.
 	 */
 	private static final double POSE_LEAVE_DISTANCE = 1.2;
@@ -368,7 +364,6 @@ public final class InteractionManager {
 				rig.setWorldValid(false);
 				continue;
 			}
-			rig.setAmbient(e instanceof Player || now - rig.getTouchedNanos() < MOB_AMBIENT);
 			updateWorld(rig, e, partialTick, dt, now);
 		}
 
@@ -412,7 +407,7 @@ public final class InteractionManager {
 		MiConfig cfg = MiConfig.get();
 		for (PlayerRig rig : rigs.asMap().values()) {
 			if (rig.isWorldValid()) {
-				rig.step(dt, cfg, rig.isAmbient());
+				rig.step(dt, cfg);
 				rig.updateDeformed();
 			}
 		}
@@ -453,30 +448,12 @@ public final class InteractionManager {
 		} else {
 			valid = false;
 		}
-		// feet on the ground: tip over them; in the air: turn about the middle, or hang from a grip
+		// feet on the ground: tip over them; in the air: turn about the middle
 		Vector3f feet = base.invert(new Matrix4f()).transformPosition(new Vector3f((float) pos.x, (float) pos.y, (float) pos.z));
 		boolean grounded = e.onGround() && !(e == Minecraft.getInstance().player && CarryClient.isCarried());
-		// only something really held up hangs; a jump while someone holds an ear stays a normal jump
-		rig.setHang(grounded || !CarryClient.isHeldUp(rig.getUuid()) ? null : hangPoint(rig));
 		rig.updatePivot(grounded, feet, dt);
 		rig.setBase(base);
 		rig.setWorldValid(valid);
-		rig.updateMotion(dt, bodyYaw);
-	}
-
-	/**
-	 * In the air and held by exactly one part: where that grip is, in model space.
-	 */
-	private Vector3f hangPoint(PlayerRig rig) {
-		Vector3f point = null;
-		for (Grab g : grabs.values()) {
-			if (!g.getTarget().equals(rig.getUuid()) || g.getBoneId() == Wire.BODY_BONE) continue;
-			Bone b = rig.bone(g.getBoneId());
-			if (b == null) continue;
-			if (point != null) return null; // two grips: it sits between hands, no swinging
-			point = b.model().transformPosition(new Vector3f(g.getAnchorLocal()));
-		}
-		return point;
 	}
 
 	// ------------------------------------------------------------------ permissions
@@ -491,7 +468,6 @@ public final class InteractionManager {
 	private void applyGrab(PlayerRig rig, Grab g, float dt) {
 		if (!g.isPrivateOnly() && !allowed(g.getTarget(), g.getKey().grabber(), kindOf(rig, g.getBoneId()))) return;
 		if (!sameModel(rig, g.getModelHash())) return;
-		rig.setTouchedNanos(System.nanoTime());
 		if (g.isLocal()) g.getSmoothModel().set(g.getGoalModel());
 		else g.getSmoothModel().lerp(g.getGoalModel(), 1f - (float) Math.exp(-dt * 18f));
 		Vector3f goal = g.getSmoothModel();
@@ -581,7 +557,6 @@ public final class InteractionManager {
 	 */
 	private void push(PlayerRig rig, Bone hitBone, Vector3f contactModel, Vector3f velModel, UUID actor, float strength,
 	                  float maxPart, float maxBody, float bodyShare) {
-		rig.setTouchedNanos(System.nanoTime());
 		Matrix4f inv = new Matrix4f();
 		int depth = 0;
 		for (Bone b = hitBone.movable(); b != null && depth <= MAX_CHAIN; b = b.getParent(), depth++) {
@@ -1132,8 +1107,6 @@ public final class InteractionManager {
 
 	private void onPet(UUID target, UUID actor) {
 		PlayerRig rig = rig(target);
-		rig.setTouchedNanos(System.nanoTime());
-		rig.triggerPet(MiConfig.get().getReactions().getAnimationSeconds());
 		hearts(rig, 2, 0.35);
 		if (target.equals(self())) playOwn(MiConfig.get().getReactions().getPetAnimation());
 	}
@@ -1141,7 +1114,6 @@ public final class InteractionManager {
 	private void onHug(UUID target, UUID actor) {
 		PlayerRig rig = rig(target);
 		hearts(rig, 6, 0.9);
-		rig.triggerPet(1.5f);
 		UUID self = self();
 		if (target.equals(self) || actor.equals(self)) playOwn(MiConfig.get().getReactions().getHugAnimation());
 	}
