@@ -106,8 +106,8 @@ Steve → Alex: mi_pet_part17 / mi_pet_head / mi_pet / mi_interact_part17 / mi_i
 ### Сила: слой значения
 
 Для плавной реакции создайте **Слой значения (Value layer)** с именем `mi_<вид>_value`: `mi_grab_value`,
-`mi_touch_value`, `mi_pet_value` или `mi_interact_value` (любое действие). Значение 0…255 — самое сильное касание этого вида сейчас (пока касание
-идёт, не меньше 1). Например, `mi_grab_value` может плавно сдвигать брови: чем сильнее тянут, тем
+`mi_touch_value`, `mi_pet_value`, `mi_hit_value`, `mi_hug_value` или `mi_interact_value` (любое действие).
+Значение 0…255 — самое сильное касание этого вида сейчас (пока касание идёт, не меньше 1, потом 0). Например, `mi_grab_value` может плавно сдвигать брови: чем сильнее тянут, тем
 сильнее хмурится.
 
 ### Кто это видит
@@ -129,10 +129,10 @@ events["modelinteractions.touch"]:register(function(t)
   -- t.phase    "start" | "update" | "stop"
   -- t.kind     "grab" | "pet" | "touch" | "hit" | "hug"
   -- t.part     "part17", "left_ear" или "body"
-  -- t.bone     номер части (число)
+  -- t.bone     номер элемента (число; -1 — туловище или объятие)
   -- t.region   к чему прикреплён: "head", "body", "left_arm", "right_arm", "left_leg", "right_leg"
   -- t.strength 0..1
-  -- t.hand     0 или 1 (какой рукой, в VR)
+  -- t.hand     номер руки того, кто трогает (0, 1…; в VR — какой рукой)
   -- t.actor     UUID того, кто трогает (строка)
   -- t.actorName ник того, кто трогает
   -- t.self     true, если трогают вас (этот клиент — владелец аватара)
@@ -188,4 +188,4 @@ end)
 ## Совместимость
 
 Поглаживание теперь передаёт часть. Старые версии мода игнорируют её, а от них поглаживание приходит
-как «вся модель» (`mi_pet_body` → `mi_pet`).
+как «вся модель» (`mi_pet_body` → `mi_pet` → `mi_interact_body` → `mi_interact`).
