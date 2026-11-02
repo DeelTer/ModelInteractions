@@ -648,7 +648,7 @@ public final class InteractionManager {
 		push(rig, hit.bone(), hit.pointModel(), v, self, strength, 18f, 0.6f, 0.15f);
 		slapSound(rig, hit);
 		if (allowed(rig.getUuid(), self, kindOf(rig, grabTarget(hit))))
-			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.SLAP, rig, hit.bone().getId(), 1f);
+			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.HIT, rig, hit.bone().getId(), 1f);
 		if (shared(rig, self, grabTarget(hit))) {
 			send(rig.getUuid(), new Wire.Act(Wire.OP_PUSH, rig.getUuid(), hit.bone().getId(), 0, true,
 					Protocol.arr(hit.pointModel()), Protocol.arr(v)));
@@ -1117,7 +1117,7 @@ public final class InteractionManager {
 				float strength = MiConfig.get().getPhysics().getTouchStrength();
 				Vector3f contact = Protocol.vec(act.anchor(), new Vector3f());
 				ToyZones.touched(rig, b, contact, sender, act.keep() ? 1f : 0.7f);
-				touches.touch(target, sender, 0, act.keep() ? TouchReactions.Kind.SLAP : TouchReactions.Kind.HIT, rig, b.getId(),
+				touches.touch(target, sender, 0, TouchReactions.Kind.HIT, rig, b.getId(),
 						act.keep() ? 1f : 0.7f);
 				if (act.keep()) {
 					// a VR slap: sharp on the part, little on the body

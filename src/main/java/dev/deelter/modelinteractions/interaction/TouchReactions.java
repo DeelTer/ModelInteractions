@@ -89,13 +89,12 @@ public final class TouchReactions {
 		 */
 		TOUCH(400),
 		/**
-		 * A PC punch with an empty hand.
+		 * A blow: a PC punch with an empty hand (strength 0.7) or a fast VR hand (1).
 		 */
-		HIT(500),
+		HIT(600),
 		/**
-		 * A fast VR hand.
+		 * A hug: the whole player, no part.
 		 */
-		SLAP(700),
 		HUG(2500);
 		/**
 		 * How long a span lasts without being refreshed; 0: until it is ended.
@@ -124,7 +123,6 @@ public final class TouchReactions {
 		 * The CPM animation this span turned on, if any.
 		 */
 		String animation;
-		boolean seen;
 	}
 
 	static String tag(String s) {
@@ -132,14 +130,23 @@ public final class TouchReactions {
 	}
 
 	/**
-	 * CPM animation names to try for a span, most precise first.
+	 * Name of the catch-all action: any of the kinds.
+	 */
+	public static final String ANY = "interact";
+
+	/**
+	 * CPM animation names to try for a span, most precise first: this action on this element, on its
+	 * vanilla part, anywhere; then the same for any action ({@code mi_interact...}).
 	 */
 	public static List<String> animationNames(Kind kind, Part part) {
-		List<String> out = new ArrayList<>(4);
-		String base = "mi_" + kind.tag();
-		if (part.exact() != null) out.add(base + "_" + part.exact());
-		if (part.bone() != Wire.BODY_BONE || kind != Kind.HUG) out.add(base + "_" + part.regionTag());
-		out.add(base);
+		List<String> out = new ArrayList<>(6);
+		for (String action : new String[]{kind.tag(), ANY}) {
+			String base = "mi_" + action;
+			if (part.exact() != null) out.add(base + "_" + part.exact());
+			// a hug is the whole player, it has no part
+			if (kind != Kind.HUG) out.add(base + "_" + part.regionTag());
+			out.add(base);
+		}
 		return out;
 	}
 
@@ -148,8 +155,28 @@ public final class TouchReactions {
 	 */
 	public void touch(UUID target, UUID actor, int hand, Kind kind, PlayerRig rig, int boneId, float strength) {
 		if (target == null || actor == null || target.equals(actor)) return;
+		// a hand petting or hugging also brushes the model: that is the same thing, not one more touch
+		if (kind == Kind.TOUCH && covered(target, actor)) return;
+		if (kind == Kind.PET || kind == Kind.HUG) stopTouches(target, actor);
 		refresh(new Key(target, actor, hand, kind), Part.of(rig, boneId), strength,
 				System.currentTimeMillis() + kind.linger);
+	}
+
+	private boolean covered(UUID target, UUID actor) {
+		for (Key k : spans.keySet())
+			if ((k.kind == Kind.PET || k.kind == Kind.HUG) && k.target.equals(target) && k.actor.equals(actor)) return true;
+		return false;
+	}
+
+	private void stopTouches(UUID target, UUID actor) {
+		for (Iterator<Map.Entry<Key, Span>> it = spans.entrySet().iterator(); it.hasNext(); ) {
+			Map.Entry<Key, Span> e = it.next();
+			Key k = e.getKey();
+			if (k.kind == Kind.TOUCH && k.target.equals(target) && k.actor.equals(actor)) {
+				stop(k, e.getValue());
+				it.remove();
+			}
+		}
 	}
 
 	/**
@@ -291,6 +318,7 @@ public final class TouchReactions {
 			if (!isSelf(e.getKey().target)) continue;
 			int v = Math.max(1, Math.round(e.getValue().strength * 255));
 			want.merge("mi_" + e.getKey().kind.tag() + "_value", v, Math::max);
+			want.merge("mi_" + ANY + "_value", v, Math::max);
 		}
 		for (Iterator<Map.Entry<String, Integer>> it = layers.entrySet().iterator(); it.hasNext(); ) {
 			Map.Entry<String, Integer> e = it.next();

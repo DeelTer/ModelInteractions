@@ -387,14 +387,19 @@ public final class DummyManager {
 		double want = 0;
 		Vec3 to = Vec3.ZERO;
 		if (hand != null) {
-			to = hand.subtract(e.position()).multiply(1, 0, 1);
-			double stretch = to.length() - ARM_REACH;
+			// NaN: we hold its hand but it isn't drawn (behind us), so the hand point isn't known: follow us
+			boolean seen = !Double.isNaN(hand.x);
+			to = (seen ? hand : mc.player.position()).subtract(e.position()).multiply(1, 0, 1);
+			double stretch = to.length() - (seen ? ARM_REACH : ARM_REACH + 0.5);
 			if (stretch > 0) want = Math.min(stretch * 0.6, FOLLOW_MAX_SPEED);
 		}
 		// eases into a walk and out of it instead of starting and stopping dead
 		d.speed += (want - d.speed) * 0.35;
 		if (d.speed < 0.005 || to.lengthSqr() < 1e-6) {
 			if (want == 0 && d.speed < 0.005) d.speed = 0;
+			// standing over a drop it walked off: come down
+			walk(mc, e, Vec3.ZERO);
+			d.center = e.position();
 			return;
 		}
 		Vec3 step = to.normalize().scale(d.speed);
@@ -404,17 +409,19 @@ public final class DummyManager {
 	}
 
 	/**
-	 * Where our hand holding one of its arms is, in the world; null when no hand holds an arm.
+	 * Where our hand holding one of its arms is, in the world; null when no hand holds an arm,
+	 * NaN when one does but the dummy isn't drawn this frame (then the point is unknown).
 	 */
 	private static Vec3 heldHand(UUID uuid) {
 		InteractionManager mgr = InteractionManager.get();
 		var rig = mgr.existingRig(uuid);
-		if (rig == null || !rig.isWorldValid()) return null;
+		if (rig == null) return null;
 		for (int hand = 0; hand <= Wire.MAX_HAND; hand++) {
 			var g = mgr.localGrab(hand);
 			if (g == null || !g.getTarget().equals(uuid)) continue;
 			var b = rig.bone(g.getBoneId());
 			if (b == null || b.getRegion() != BodyRegion.LEFT_ARM && b.getRegion() != BodyRegion.RIGHT_ARM) continue;
+			if (!rig.isWorldValid()) return new Vec3(Double.NaN, Double.NaN, Double.NaN);
 			var p = rig.getModelToWorld().transformPosition(new org.joml.Vector3f(g.getGoalModel()));
 			return new Vec3(p.x, p.y, p.z);
 		}
@@ -435,7 +442,7 @@ public final class DummyManager {
 			else return;
 		}
 		var moved = box.move(move);
-		// settle onto whatever is below, at most a block per tick
+		// settle onto whatever is below, at most a block per tick (falling off an edge takes a few ticks)
 		double drop = 0;
 		while (drop < 1.0 && mc.level.noCollision(e, moved.move(0, -(drop + 0.05), 0))) drop += 0.05;
 		e.setPos(e.position().add(move.x, move.y - drop, move.z));

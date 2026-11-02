@@ -50,7 +50,7 @@
   "modelinteractions.config.grabbedAnimation": "Анимация при захвате",
   "modelinteractions.config.animationSeconds": "Длительность реакции (с)",
   "modelinteractions.config.touchEvents": "Реакции на касания",
-  "modelinteractions.config.touchEvents.tooltip": "Модель реагирует на то, какую часть трогают: CPM-анимации mi_* (mi_pet, mi_grab_part17…) и событие Figura modelinteractions.touch",
+  "modelinteractions.config.touchEvents.tooltip": "Модель реагирует на то, какую часть трогают: CPM-анимации mi_* (mi_interact, mi_pet, mi_grab_part17…) и событие Figura modelinteractions.touch",
   "key.modelinteractions.free_mode": "Вкл/выкл «позируй меня»",
   "modelinteractions.msg.free_on": "«Позируй меня»: другие могут поставить вас в позу, она останется. K — сброс",
   "modelinteractions.msg.free_off": "«Позируй меня» выключено",
