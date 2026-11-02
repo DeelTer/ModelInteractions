@@ -19,6 +19,9 @@
     "modmenu": [
       "dev.deelter.modelinteractions.config.ModMenuEntry"
     ],
+    "figura_event": [
+      "dev.deelter.modelinteractions.figura.FiguraTouchEvents"
+    ],
     "main": [
       "dev.deelter.modelinteractions.server.ServerRelay"
     ]
@@ -36,6 +39,7 @@
     "cpm": "*",
     "vivecraft": "*",
     "modmenu": "*",
-    "cloth-config": "*"
+    "cloth-config": "*",
+    "figura": "*"
   }
 }

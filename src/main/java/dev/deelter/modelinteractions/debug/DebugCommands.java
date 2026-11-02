@@ -121,6 +121,11 @@ public final class DebugCommands {
 						return 1;
 					}))
 					.then(literal("rigs").executes(DebugCommands::listRigs))
+					.then(literal("touches").executes(c -> {
+						dev.deelter.modelinteractions.interaction.TouchReactions.setDebug(!dev.deelter.modelinteractions.interaction.TouchReactions.isDebug());
+						c.getSource().sendFeedback(Component.literal("Touch names " + (dev.deelter.modelinteractions.interaction.TouchReactions.isDebug() ? "on: every touch shows the mi_* animation names to make" : "off")));
+						return 1;
+					}))
 					.then(literal("net").executes(c -> {
 						c.getSource().sendFeedback(Component.literal("Relay " + (dev.deelter.modelinteractions.net.RelayNet.isActive() ? "active, range " + dev.deelter.modelinteractions.net.RelayNet.getRange()
 								: "NOT active after " + dev.deelter.modelinteractions.net.RelayNet.getHellos() + " hellos" + (dev.deelter.modelinteractions.net.RelayNet.isVersionMismatch() ? ", server speaks another protocol" : ""))));

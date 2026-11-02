@@ -91,6 +91,8 @@ public final class ClothConfigScreen {
 		react.addEntry(e.startStrField(t("grabbedAnimation"), r.getGrabbedAnimation()).setDefaultValue(dr.getGrabbedAnimation()).setSaveConsumer(r::setGrabbedAnimation).build());
 		react.addEntry(e.startFloatField(t("animationSeconds"), r.getAnimationSeconds()).setDefaultValue(dr.getAnimationSeconds()).setMin(0.5f).setMax(20f)
 				.setSaveConsumer(r::setAnimationSeconds).build());
+		react.addEntry(e.startBooleanToggle(t("touchEvents"), r.isTouchEvents()).setDefaultValue(dr.isTouchEvents())
+				.setTooltip(t("touchEvents.tooltip")).setSaveConsumer(r::setTouchEvents).build());
 		return b.build();
 	}
 }
