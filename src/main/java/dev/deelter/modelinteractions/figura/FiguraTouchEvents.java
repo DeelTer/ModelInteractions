@@ -19,6 +19,11 @@ public class FiguraTouchEvents implements FiguraEvent {
 
 	@Override
 	public Collection<?> getEvents() {
-		return List.of(Pair.of("touch", new LuaEvent()));
+		try {
+			return List.of(Pair.of("touch", new LuaEvent()));
+		} catch (LinkageError e) {
+			// another Figura than we know: no event, but the avatar still loads
+			return List.of();
+		}
 	}
 }

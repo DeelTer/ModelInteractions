@@ -507,7 +507,7 @@ public final class InteractionManager {
 	/**
 	 * Does a bone number from someone who sees model {@code hash} mean the same part on what we see?
 	 */
-	private static boolean sameModel(PlayerRig rig, int hash) {
+	static boolean sameModel(PlayerRig rig, int hash) {
 		return hash == 0 || rig.getModelKey().hashCode() == hash;
 	}
 
@@ -647,7 +647,8 @@ public final class InteractionManager {
 		Vector3f v = SpringJoint.clamp(new Vector3f(velModel), Wire.MAX_COORD);
 		push(rig, hit.bone(), hit.pointModel(), v, self, strength, 18f, 0.6f, 0.15f);
 		slapSound(rig, hit);
-		touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.SLAP, rig, hit.bone().getId(), 1f);
+		if (allowed(rig.getUuid(), self, kindOf(rig, grabTarget(hit))))
+			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.SLAP, rig, hit.bone().getId(), 1f);
 		if (shared(rig, self, grabTarget(hit))) {
 			send(rig.getUuid(), new Wire.Act(Wire.OP_PUSH, rig.getUuid(), hit.bone().getId(), 0, true,
 					Protocol.arr(hit.pointModel()), Protocol.arr(v)));
@@ -665,7 +666,8 @@ public final class InteractionManager {
 		Vector3f velModel = rig.getWorldToModel().transformDirection(new Vector3f(lookWorld).normalize(PUNCH_SPEED), new Vector3f());
 		float strength = MiConfig.get().getPhysics().getTouchStrength();
 		push(rig, hit.bone(), hit.pointModel(), velModel, self, strength, 9f, 1.5f, 1f);
-		touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.HIT, rig, hit.bone().getId(), 0.7f);
+		if (allowed(rig.getUuid(), self, kindOf(rig, grabTarget(hit))))
+			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.HIT, rig, hit.bone().getId(), 0.7f);
 		if (shared(rig, self, grabTarget(hit)))
 			send(rig.getUuid(), Protocol.push(rig.getUuid(), hit.bone().getId(), hit.pointModel(), velModel));
 	}
@@ -853,7 +855,9 @@ public final class InteractionManager {
 		UUID self = self();
 		if (self == null || !mayLocally(rig.getUuid(), self, InteractionKind.PET)) return false;
 		int bone = where == null ? Wire.BODY_BONE : where.bone().getId();
-		touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.PET, rig, bone, 1f);
+		// only what the owner allows counts as felt; "local when denied" stays on our screen
+		if (allowed(rig.getUuid(), self, InteractionKind.PET))
+			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.PET, rig, bone, 1f);
 		if (!cooldown("pet:" + rig.getUuid(), 400)) return true;
 		onPet(rig.getUuid(), self);
 		// the part goes along so the owner's model can react to where it is petted (older clients ignore it)
@@ -1181,7 +1185,8 @@ public final class InteractionManager {
 
 	private void onHug(UUID target, UUID actor) {
 		PlayerRig rig = rig(target);
-		touches.touch(target, actor, 0, TouchReactions.Kind.HUG, rig, Wire.BODY_BONE, 1f);
+		if (allowed(target, actor, InteractionKind.HUG))
+			touches.touch(target, actor, 0, TouchReactions.Kind.HUG, rig, Wire.BODY_BONE, 1f);
 		hearts(rig, 6, 0.9);
 		UUID self = self();
 		if (target.equals(self) || actor.equals(self)) playOwn(MiConfig.get().getReactions().getHugAnimation());

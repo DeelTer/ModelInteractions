@@ -11,6 +11,7 @@
 		"GameRendererMixin",
 		"KeyboardInputMixin",
 		"LivingEntityRendererMixin",
+		"LivingEntityTickMixin",
 		"MannequinAccessor",
 		"MinecraftMixin",
 		"ModelFeatureRendererMixin",

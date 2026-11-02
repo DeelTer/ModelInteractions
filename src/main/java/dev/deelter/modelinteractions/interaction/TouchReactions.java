@@ -167,7 +167,9 @@ public final class TouchReactions {
 			if (actor.equals(g.getTarget())) continue;
 			PlayerRig rig = mgr.existingRig(g.getTarget());
 			if (rig == null) continue;
-			if (!g.isLocal() && !mgr.allowed(g.getTarget(), actor, InteractionManager.kindOf(rig, g.getBoneId()))) continue;
+			// not allowed (shown only on the grabber's screen) or held on another model than we see
+			if (!mgr.allowed(g.getTarget(), actor, InteractionManager.kindOf(rig, g.getBoneId()))
+					|| !InteractionManager.sameModel(rig, g.getModelHash())) continue;
 			Key k = new Key(g.getTarget(), actor, g.getKey().hand(), Kind.GRAB);
 			live.add(k);
 			refresh(k, Part.of(rig, g.getBoneId()), tension(mgr, rig, g), Long.MAX_VALUE);
@@ -185,12 +187,18 @@ public final class TouchReactions {
 	 * How hard the part is pulled, 0..1: how far the hand is from where the held point actually is.
 	 */
 	private static float tension(InteractionManager mgr, PlayerRig rig, Grab g) {
-		if (!rig.isWorldValid()) return 0;
-		var held = mgr.grabbedPointWorld(g, new org.joml.Vector3f());
-		if (held == null) return 0;
-		var goal = (g.getBoneId() == Wire.BODY_BONE ? rig.getBaseModelToWorld() : rig.getModelToWorld())
-				.transformPosition(g.getGoalModel(), new org.joml.Vector3f());
-		return Math.clamp(held.distance(goal) / 0.5f, 0f, 1f);
+		if (g.getBoneId() == Wire.BODY_BONE) {
+			if (!rig.isWorldValid()) return 0;
+			var held = mgr.grabbedPointWorld(g, new org.joml.Vector3f());
+			if (held == null) return 0;
+			var goal = rig.getBaseModelToWorld().transformPosition(g.getGoalModel(), new org.joml.Vector3f());
+			return Math.clamp(held.distance(goal) / 0.5f, 0f, 1f);
+		}
+		// in model space: works for our own model in first person too, where it isn't placed in the world
+		Bone b = rig.bone(g.getBoneId());
+		if (b == null) return 0;
+		var held = b.deformed().transformPosition(new org.joml.Vector3f(g.getAnchorLocal()));
+		return Math.clamp(held.distance(g.getGoalModel()) / 0.5f, 0f, 1f);
 	}
 
 	private void refresh(Key k, Part part, float strength, long until) {
