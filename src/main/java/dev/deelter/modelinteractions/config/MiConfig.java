@@ -263,5 +263,10 @@ public class MiConfig {
 		private String hugAnimation = "hug";
 		private String grabbedAnimation = "grabbed";
 		private float animationSeconds = 2.5f;
+		/**
+		 * Tell models which part is touched: {@code mi_*} CPM animations on your own model and
+		 * Figura's {@code modelinteractions.touch} event. See docs/REACTIONS.md.
+		 */
+		private boolean touchEvents = true;
 	}
 }

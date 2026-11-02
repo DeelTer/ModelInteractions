@@ -59,6 +59,12 @@ configure(subprojects.findAll { it.name.startsWith('mc') }) {
         }
     }
 
+    // Compile-time stand-ins for Figura's entrypoint types; Figura is optional and never packaged
+    sourceSets {
+        stubs { java.srcDirs = [rootProject.file('src/stubs/java')] }
+    }
+    dependencies { compileOnly sourceSets.stubs.output }
+
     processResources {
         def props = [version: project.version, minecraft_range: project.minecraft_range]
         inputs.properties props

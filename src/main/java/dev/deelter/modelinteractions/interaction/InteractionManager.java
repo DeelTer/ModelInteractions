@@ -99,8 +99,12 @@ public final class InteractionManager {
 	@Getter
 	@Setter
 	private NetBridge net = NetBridge.NONE;
-	@Setter
 	private Animator animator = (n, v) -> false;
+	/**
+	 * Who touches which part right now, told to CPM animations and Figura avatars.
+	 */
+	@Getter
+	private final TouchReactions touches = new TouchReactions();
 	@Setter
 	private TouchListener touchListener;
 	private long lastFrame, lastStateSweep, lastRepublish;
@@ -271,7 +275,13 @@ public final class InteractionManager {
 		return out;
 	}
 
+	public void setAnimator(Animator animator) {
+		this.animator = animator;
+		touches.setAnimator(animator);
+	}
+
 	public void clear() {
+		touches.clear();
 		rigs.invalidateAll();
 		permissions.invalidateAll();
 		savedPoses.invalidateAll();
@@ -497,7 +507,7 @@ public final class InteractionManager {
 	/**
 	 * Does a bone number from someone who sees model {@code hash} mean the same part on what we see?
 	 */
-	private static boolean sameModel(PlayerRig rig, int hash) {
+	static boolean sameModel(PlayerRig rig, int hash) {
 		return hash == 0 || rig.getModelKey().hashCode() == hash;
 	}
 
@@ -578,6 +588,9 @@ public final class InteractionManager {
 			PartHit hit = HitTester.sphere(rig, h.pos(), 0.05f, b -> true);
 			if (hit == null) continue;
 			if (touchListener != null) touchListener.touched(h, hit);
+			if (!slap && allowed(rig.getUuid(), h.owner(), kindOf(rig, grabTarget(hit))))
+				touches.touch(rig.getUuid(), h.owner(), h.hand(), TouchReactions.Kind.TOUCH, rig, hit.bone().getId(),
+						Math.clamp(vel.length() / 2.5f, 0.1f, 1f));
 			if (vel.length() > TOY_MIN_SPEED)
 				ToyZones.touched(rig, hit.bone(), hit.pointModel(), h.owner(), Math.clamp(vel.length() / 2.5f, 0.15f, 1f));
 			Vector3f velModel = rig.getWorldToModel().transformDirection(vel, new Vector3f());
@@ -634,6 +647,8 @@ public final class InteractionManager {
 		Vector3f v = SpringJoint.clamp(new Vector3f(velModel), Wire.MAX_COORD);
 		push(rig, hit.bone(), hit.pointModel(), v, self, strength, 18f, 0.6f, 0.15f);
 		slapSound(rig, hit);
+		if (allowed(rig.getUuid(), self, kindOf(rig, grabTarget(hit))))
+			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.SLAP, rig, hit.bone().getId(), 1f);
 		if (shared(rig, self, grabTarget(hit))) {
 			send(rig.getUuid(), new Wire.Act(Wire.OP_PUSH, rig.getUuid(), hit.bone().getId(), 0, true,
 					Protocol.arr(hit.pointModel()), Protocol.arr(v)));
@@ -651,6 +666,8 @@ public final class InteractionManager {
 		Vector3f velModel = rig.getWorldToModel().transformDirection(new Vector3f(lookWorld).normalize(PUNCH_SPEED), new Vector3f());
 		float strength = MiConfig.get().getPhysics().getTouchStrength();
 		push(rig, hit.bone(), hit.pointModel(), velModel, self, strength, 9f, 1.5f, 1f);
+		if (allowed(rig.getUuid(), self, kindOf(rig, grabTarget(hit))))
+			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.HIT, rig, hit.bone().getId(), 0.7f);
 		if (shared(rig, self, grabTarget(hit)))
 			send(rig.getUuid(), Protocol.push(rig.getUuid(), hit.bone().getId(), hit.pointModel(), velModel));
 	}
@@ -837,10 +854,15 @@ public final class InteractionManager {
 	public boolean pet(PlayerRig rig, PartHit where) {
 		UUID self = self();
 		if (self == null || !mayLocally(rig.getUuid(), self, InteractionKind.PET)) return false;
+		int bone = where == null ? Wire.BODY_BONE : where.bone().getId();
+		// only what the owner allows counts as felt; "local when denied" stays on our screen
+		if (allowed(rig.getUuid(), self, InteractionKind.PET))
+			touches.touch(rig.getUuid(), self, 0, TouchReactions.Kind.PET, rig, bone, 1f);
 		if (!cooldown("pet:" + rig.getUuid(), 400)) return true;
 		onPet(rig.getUuid(), self);
+		// the part goes along so the owner's model can react to where it is petted (older clients ignore it)
 		if (allowed(rig.getUuid(), self, InteractionKind.PET))
-			send(rig.getUuid(), Protocol.act(Wire.OP_PET, rig.getUuid()));
+			send(rig.getUuid(), new Wire.Act(Wire.OP_PET, rig.getUuid(), bone, 0, false, null, null));
 		return true;
 	}
 
@@ -1072,8 +1094,12 @@ public final class InteractionManager {
 				}
 			}
 			case Wire.OP_PET -> {
-				if (allowed(target, sender, InteractionKind.PET) && cooldown("rx-pet:" + sender, 300))
-					onPet(target, sender);
+				if (!allowed(target, sender, InteractionKind.PET)) return;
+				PlayerRig rig = rigs.getIfPresent(target);
+				// old clients send no part (model hash 0): then it's the whole player
+				int bone = rig != null && act.model() != 0 && sameModel(rig, act.model()) ? act.bone() : Wire.BODY_BONE;
+				touches.touch(target, sender, 0, TouchReactions.Kind.PET, rig, bone, 1f);
+				if (cooldown("rx-pet:" + sender, 300)) onPet(target, sender);
 			}
 			case Wire.OP_HUG -> {
 				if (allowed(target, sender, InteractionKind.HUG) && cooldown("rx-hug:" + sender, 1500))
@@ -1091,6 +1117,8 @@ public final class InteractionManager {
 				float strength = MiConfig.get().getPhysics().getTouchStrength();
 				Vector3f contact = Protocol.vec(act.anchor(), new Vector3f());
 				ToyZones.touched(rig, b, contact, sender, act.keep() ? 1f : 0.7f);
+				touches.touch(target, sender, 0, act.keep() ? TouchReactions.Kind.SLAP : TouchReactions.Kind.HIT, rig, b.getId(),
+						act.keep() ? 1f : 0.7f);
 				if (act.keep()) {
 					// a VR slap: sharp on the part, little on the body
 					Vector3f v = SpringJoint.clamp(Protocol.vec(act.point(), new Vector3f()), Wire.MAX_COORD);
@@ -1157,6 +1185,8 @@ public final class InteractionManager {
 
 	private void onHug(UUID target, UUID actor) {
 		PlayerRig rig = rig(target);
+		if (allowed(target, actor, InteractionKind.HUG))
+			touches.touch(target, actor, 0, TouchReactions.Kind.HUG, rig, Wire.BODY_BONE, 1f);
 		hearts(rig, 6, 0.9);
 		UUID self = self();
 		if (target.equals(self) || actor.equals(self)) playOwn(MiConfig.get().getReactions().getHugAnimation());
@@ -1210,6 +1240,8 @@ public final class InteractionManager {
 	 */
 	public void tick() {
 		checkPoseLeave();
+		touches.syncGrabs(grabs.values(), this);
+		touches.tick();
 		if (ownAnim != null && System.currentTimeMillis() > ownAnimUntil) {
 			animator.play(ownAnim, 0);
 			ownAnim = null;

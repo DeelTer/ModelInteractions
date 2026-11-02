@@ -172,6 +172,8 @@ public final class DummyManager {
 				d.flying = Vec3.ZERO;
 			}
 			case Wire.CARRY_TETHER -> {
+				// a following dummy walks after the hand by itself
+				if (d.motion == Motion.FOLLOW) return;
 				// dragged: the spot it stands on follows the hand, beyond half a block of slack
 				Vec3 to = new Vec3(at.x - d.center.x, 0, at.z - d.center.z);
 				double dist = to.length();
@@ -238,6 +240,18 @@ public final class DummyManager {
 		return DUMMIES.values().stream()
 				.min(Comparator.comparingDouble(d -> d.entity.distanceToSqr(mc.player)))
 				.map(d -> d.entity.getUUID()).orElse(null);
+	}
+
+	/**
+	 * Toggles following for one dummy; true when it follows now.
+	 */
+	public static boolean toggleFollow(UUID uuid) {
+		Dummy d = DUMMIES.get(uuid);
+		if (d == null) return false;
+		d.motion = d.motion == Motion.FOLLOW ? Motion.STILL : Motion.FOLLOW;
+		d.center = d.entity.position();
+		d.speed = 0;
+		return d.motion == Motion.FOLLOW;
 	}
 
 	public static boolean setMotion(Motion motion) {
@@ -337,6 +351,12 @@ public final class DummyManager {
 					e.setPos(d.center.x, d.center.y + h, d.center.z);
 					face(d, d.baseYaw);
 				}
+				case FOLLOW -> {
+					// the step itself happened in beforeTick; here only where it looks
+					d.airborne = false;
+					e.setOnGround(true);
+					followFace(mc, d);
+				}
 				case FLOAT -> {
 					d.phase += 0.05f;
 					e.setPos(d.center.x, d.center.y + 1.2 + Math.sin(d.phase) * 0.05, d.center.z);
@@ -344,6 +364,100 @@ public final class DummyManager {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Distance kept to whoever leads it by the hand, blocks.
+	 */
+	private static final double FOLLOW_GAP = 0.9;
+	private static final double FOLLOW_MAX_SPEED = 0.3;
+
+	/**
+	 * Called at the start of every client-side living entity tick. A following dummy steps here, inside
+	 * its own tick, so the game sees it move and animates its legs (CPM walking animations too).
+	 */
+	public static void beforeTick(LivingEntity e) {
+		if (DUMMIES.isEmpty()) return;
+		Dummy d = DUMMIES.get(e.getUUID());
+		if (d == null || d.entity != e || d.motion != Motion.FOLLOW) return;
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player == null || d.carriedAt != null || d.flying != null) {
+			d.speed = 0;
+			d.led = false;
+			return;
+		}
+		d.led = heldByHand(e.getUUID());
+		Vec3 to = mc.player.position().subtract(e.position()).multiply(1, 0, 1);
+		double dist = to.length();
+		double want = d.led && dist > FOLLOW_GAP ? Math.min((dist - FOLLOW_GAP) * 0.4, FOLLOW_MAX_SPEED) : 0;
+		// eases into a walk and out of it instead of starting and stopping dead
+		d.speed += (want - d.speed) * 0.35;
+		if (d.speed < 0.005) {
+			d.speed = 0;
+			return;
+		}
+		Vec3 step = to.normalize().scale(d.speed);
+		d.walkYaw = (float) Math.toDegrees(Math.atan2(-step.x, step.z));
+		walk(mc, e, step);
+		d.center = e.position();
+	}
+
+	/**
+	 * Holding one of its arms (either of our hands).
+	 */
+	private static boolean heldByHand(UUID uuid) {
+		InteractionManager mgr = InteractionManager.get();
+		var rig = mgr.existingRig(uuid);
+		if (rig == null) return false;
+		for (int hand = 0; hand <= Wire.MAX_HAND; hand++) {
+			var g = mgr.localGrab(hand);
+			if (g == null || !g.getTarget().equals(uuid)) continue;
+			var b = rig.bone(g.getBoneId());
+			if (b != null && (b.getRegion() == BodyRegion.LEFT_ARM || b.getRegion() == BodyRegion.RIGHT_ARM)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * A step on the real blocks: up a slab or a block edge (like a player), down to the ground below.
+	 */
+	private static void walk(Minecraft mc, LivingEntity e, Vec3 step) {
+		var box = e.getBoundingBox();
+		Vec3 move = step;
+		if (!mc.level.noCollision(e, box.move(move))) {
+			Vec3 up = step.add(0, 0.6, 0);
+			if (mc.level.noCollision(e, box.move(up))) move = up;
+			else if (mc.level.noCollision(e, box.move(step.x, 0, 0))) move = new Vec3(step.x, 0, 0);
+			else if (mc.level.noCollision(e, box.move(0, 0, step.z))) move = new Vec3(0, 0, step.z);
+			else return;
+		}
+		var moved = box.move(move);
+		// settle onto whatever is below, at most a block per tick
+		double drop = 0;
+		while (drop < 1.0 && mc.level.noCollision(e, moved.move(0, -(drop + 0.05), 0))) drop += 0.05;
+		e.setPos(e.position().add(move.x, move.y - drop, move.z));
+	}
+
+	/**
+	 * Faces the way it walks; while led, the head turns a little (not all the way) to the one leading.
+	 */
+	private static void followFace(Minecraft mc, Dummy d) {
+		LivingEntity e = d.entity;
+		float body = e.getYRot() + net.minecraft.util.Mth.wrapDegrees(d.walkYaw - e.getYRot()) * 0.3f;
+		float turn = 0, pitch = 0;
+		if (d.led && mc.player != null) {
+			Vec3 v = mc.player.getEyePosition().subtract(e.getEyePosition());
+			float toYaw = (float) Math.toDegrees(Math.atan2(-v.x, v.z));
+			float toPitch = (float) -Math.toDegrees(Math.atan2(v.y, Math.sqrt(v.x * v.x + v.z * v.z)));
+			turn = net.minecraft.util.Mth.clamp(net.minecraft.util.Mth.wrapDegrees(toYaw - body) * 0.35f, -30f, 30f);
+			pitch = net.minecraft.util.Mth.clamp(toPitch * 0.3f, -15f, 15f);
+		}
+		d.headTurn += (turn - d.headTurn) * 0.2f;
+		d.headPitch += (pitch - d.headPitch) * 0.2f;
+		e.setYRot(body);
+		e.setYBodyRot(body);
+		e.setYHeadRot(body + d.headTurn);
+		e.setXRot(d.headPitch);
 	}
 
 	private static void face(LivingEntity e, float yaw) {
@@ -402,7 +516,7 @@ public final class DummyManager {
 	/**
 	 * FLOAT: hovers a little above the ground, so one hand can catch it and it hangs.
 	 */
-	public enum Motion {STILL, WALK, SPIN, JUMP, FLOAT}
+	public enum Motion {STILL, WALK, SPIN, JUMP, FLOAT, FOLLOW}
 
 	private static final class Dummy {
 		final LivingEntity entity;
@@ -419,6 +533,12 @@ public final class DummyManager {
 		Vec3 lookAt;
 		long lookNanos;
 		Vec3 center;
+		/**
+		 * FOLLOW: walking speed (blocks/tick), the way it walks, and how far its head is turned to us.
+		 */
+		double speed;
+		float walkYaw, headTurn, headPitch;
+		boolean led;
 
 		Dummy(LivingEntity entity, GameProfile profile, Vec3 center, float baseYaw) {
 			this.carriedAt = null;
@@ -427,6 +547,7 @@ public final class DummyManager {
 			this.profile = profile;
 			this.center = center;
 			this.baseYaw = baseYaw;
+			this.walkYaw = baseYaw;
 		}
 	}
 }

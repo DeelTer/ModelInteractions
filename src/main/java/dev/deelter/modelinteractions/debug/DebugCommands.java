@@ -21,6 +21,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.Locale;
+import java.util.UUID;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
@@ -29,7 +30,8 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
  * Client commands:
  * <pre>
  * /mi dummy spawn &lt;model&gt; [name]   fake player wearing a builtin or config/modelinteractions/dummies model
- * /mi dummy motion &lt;still|walk|spin|jump&gt;
+ * /mi dummy motion &lt;still|walk|spin|jump|float|follow&gt;
+ * /mi dummy follow                 the aimed dummy follows you while you hold its hand (toggle)
  * /mi dummy mob &lt;type&gt;              client-only mob
  * /mi dummy pose on|off            dummies in "pose me" mode
  * /mi dummy reset                  drop dummies' poses
@@ -102,6 +104,18 @@ public final class DebugCommands {
 				}));
 			}
 			dummy.then(motion);
+			dummy.then(literal("follow").executes(c -> {
+				UUID target = DummyManager.aimed(Minecraft.getInstance());
+				if (target == null) {
+					c.getSource().sendError(Component.literal("No dummies"));
+					return 0;
+				}
+				boolean on = DummyManager.toggleFollow(target);
+				c.getSource().sendFeedback(Component.literal(on
+						? "The dummy follows you while you hold its hand (grab an arm and walk)"
+						: "The dummy stays where it is"));
+				return 1;
+			}));
 			var equip = literal("equip");
 			var take = literal("take").executes(c -> take(c, null));
 			for (EquipmentSlot slot : DUMMY_SLOTS) {
@@ -121,6 +135,11 @@ public final class DebugCommands {
 						return 1;
 					}))
 					.then(literal("rigs").executes(DebugCommands::listRigs))
+					.then(literal("touches").executes(c -> {
+						dev.deelter.modelinteractions.interaction.TouchReactions.setDebug(!dev.deelter.modelinteractions.interaction.TouchReactions.isDebug());
+						c.getSource().sendFeedback(Component.literal("Touch names " + (dev.deelter.modelinteractions.interaction.TouchReactions.isDebug() ? "on: every touch shows the mi_* animation names to make" : "off")));
+						return 1;
+					}))
 					.then(literal("net").executes(c -> {
 						c.getSource().sendFeedback(Component.literal("Relay " + (dev.deelter.modelinteractions.net.RelayNet.isActive() ? "active, range " + dev.deelter.modelinteractions.net.RelayNet.getRange()
 								: "NOT active after " + dev.deelter.modelinteractions.net.RelayNet.getHellos() + " hellos" + (dev.deelter.modelinteractions.net.RelayNet.isVersionMismatch() ? ", server speaks another protocol" : ""))));

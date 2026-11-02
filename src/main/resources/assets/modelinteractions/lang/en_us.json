@@ -49,6 +49,8 @@
   "modelinteractions.config.hugAnimation": "Hug animation",
   "modelinteractions.config.grabbedAnimation": "Grabbed animation",
   "modelinteractions.config.animationSeconds": "Reaction duration (s)",
+  "modelinteractions.config.touchEvents": "Touch reactions",
+  "modelinteractions.config.touchEvents.tooltip": "Your model reacts to the part being touched: mi_* CPM animations (mi_pet_ear, mi_grab_tail…) and the Figura event modelinteractions.touch",
   "key.modelinteractions.free_mode": "Toggle \"pose me\"",
   "modelinteractions.msg.free_on": "Pose me: others can put you in a pose, it stays. K to reset",
   "modelinteractions.msg.free_off": "Pose me off",
