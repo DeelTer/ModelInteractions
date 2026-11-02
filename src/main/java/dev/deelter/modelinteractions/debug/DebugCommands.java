@@ -31,7 +31,7 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
  * <pre>
  * /mi dummy spawn &lt;model&gt; [name]   fake player wearing a builtin or config/modelinteractions/dummies model
  * /mi dummy motion &lt;still|walk|spin|jump|float|follow&gt;
- * /mi dummy follow                 the aimed dummy follows you while you hold its hand (toggle)
+ * /mi dummy follow                 the aimed dummy can be led by the hand (toggle)
  * /mi dummy mob &lt;type&gt;              client-only mob
  * /mi dummy pose on|off            dummies in "pose me" mode
  * /mi dummy reset                  drop dummies' poses
@@ -112,7 +112,7 @@ public final class DebugCommands {
 				}
 				boolean on = DummyManager.toggleFollow(target);
 				c.getSource().sendFeedback(Component.literal(on
-						? "The dummy follows you while you hold its hand (grab an arm and walk)"
+						? "Lead the dummy by the hand: grab an arm and pull, it walks along"
 						: "The dummy stays where it is"));
 				return 1;
 			}));

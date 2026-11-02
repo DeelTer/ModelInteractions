@@ -70,10 +70,6 @@ public final class TouchReactions {
 			return name != null && !name.isBlank() ? tag(name) : "part" + bone;
 		}
 
-		public String typeTag() {
-			return type == PartType.STATIC ? null : tag(type.name());
-		}
-
 		public String regionTag() {
 			return tag(region.name());
 		}
@@ -142,7 +138,6 @@ public final class TouchReactions {
 		List<String> out = new ArrayList<>(4);
 		String base = "mi_" + kind.tag();
 		if (part.exact() != null) out.add(base + "_" + part.exact());
-		if (part.typeTag() != null) out.add(base + "_" + part.typeTag());
 		if (part.bone() != Wire.BODY_BONE || kind != Kind.HUG) out.add(base + "_" + part.regionTag());
 		out.add(base);
 		return out;
@@ -318,7 +313,6 @@ public final class TouchReactions {
 		t.put("kind", k.kind.tag());
 		t.put("part", s.part.exact() != null ? s.part.exact() : "body");
 		t.put("bone", s.part.bone());
-		t.put("type", s.part.type() == PartType.STATIC ? "body" : s.part.typeTag());
 		t.put("region", s.part.regionTag());
 		t.put("strength", (double) s.strength);
 		t.put("hand", k.hand);

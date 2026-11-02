@@ -367,33 +367,34 @@ public final class DummyManager {
 	}
 
 	/**
-	 * Distance kept to whoever leads it by the hand, blocks.
+	 * How far from its middle the held hand may be before the dummy is pulled along: about an arm's reach.
 	 */
-	private static final double FOLLOW_GAP = 0.9;
+	private static final double ARM_REACH = 0.75;
 	private static final double FOLLOW_MAX_SPEED = 0.3;
 
 	/**
 	 * Called at the start of every client-side living entity tick. A following dummy steps here, inside
 	 * its own tick, so the game sees it move and animates its legs (CPM walking animations too).
+	 * It doesn't walk to you by itself: it is pulled by the hand you hold, once the arm is stretched.
 	 */
 	public static void beforeTick(LivingEntity e) {
 		if (DUMMIES.isEmpty()) return;
 		Dummy d = DUMMIES.get(e.getUUID());
 		if (d == null || d.entity != e || d.motion != Motion.FOLLOW) return;
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.player == null || d.carriedAt != null || d.flying != null) {
-			d.speed = 0;
-			d.led = false;
-			return;
+		Vec3 hand = mc.player == null || d.carriedAt != null || d.flying != null ? null : heldHand(e.getUUID());
+		d.led = hand != null;
+		double want = 0;
+		Vec3 to = Vec3.ZERO;
+		if (hand != null) {
+			to = hand.subtract(e.position()).multiply(1, 0, 1);
+			double stretch = to.length() - ARM_REACH;
+			if (stretch > 0) want = Math.min(stretch * 0.6, FOLLOW_MAX_SPEED);
 		}
-		d.led = heldByHand(e.getUUID());
-		Vec3 to = mc.player.position().subtract(e.position()).multiply(1, 0, 1);
-		double dist = to.length();
-		double want = d.led && dist > FOLLOW_GAP ? Math.min((dist - FOLLOW_GAP) * 0.4, FOLLOW_MAX_SPEED) : 0;
 		// eases into a walk and out of it instead of starting and stopping dead
 		d.speed += (want - d.speed) * 0.35;
-		if (d.speed < 0.005) {
-			d.speed = 0;
+		if (d.speed < 0.005 || to.lengthSqr() < 1e-6) {
+			if (want == 0 && d.speed < 0.005) d.speed = 0;
 			return;
 		}
 		Vec3 step = to.normalize().scale(d.speed);
@@ -403,19 +404,21 @@ public final class DummyManager {
 	}
 
 	/**
-	 * Holding one of its arms (either of our hands).
+	 * Where our hand holding one of its arms is, in the world; null when no hand holds an arm.
 	 */
-	private static boolean heldByHand(UUID uuid) {
+	private static Vec3 heldHand(UUID uuid) {
 		InteractionManager mgr = InteractionManager.get();
 		var rig = mgr.existingRig(uuid);
-		if (rig == null) return false;
+		if (rig == null || !rig.isWorldValid()) return null;
 		for (int hand = 0; hand <= Wire.MAX_HAND; hand++) {
 			var g = mgr.localGrab(hand);
 			if (g == null || !g.getTarget().equals(uuid)) continue;
 			var b = rig.bone(g.getBoneId());
-			if (b != null && (b.getRegion() == BodyRegion.LEFT_ARM || b.getRegion() == BodyRegion.RIGHT_ARM)) return true;
+			if (b == null || b.getRegion() != BodyRegion.LEFT_ARM && b.getRegion() != BodyRegion.RIGHT_ARM) continue;
+			var p = rig.getModelToWorld().transformPosition(new org.joml.Vector3f(g.getGoalModel()));
+			return new Vec3(p.x, p.y, p.z);
 		}
-		return false;
+		return null;
 	}
 
 	/**
